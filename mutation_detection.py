@@ -87,7 +87,7 @@ def get_k_mut_priors(N, affect_all = True):
         return lognormalize(result[:-1])
 
 
-def get_composition_priors(n_cells, genotype_freq, mutation_rate):
+def get_composition_priors(n_cells, genotype_freq = {'R': 1/3, 'H': 1/3, 'A': 1/3}, mutation_rate = 0.25):
     '''
     genotype_freq: dictionary, prior probabilities of the root having genotype R, H or A
     mutation_rate: proportion of mutated loci
@@ -130,9 +130,9 @@ def get_posteriors(ref, alt, genotype_freq = {'R': 1/3, 'H': 1/3, 'A': 1/3}, mut
     # assert(df_ref.index.size == n_loci)
     
     # get priors for each situation 
-    log_priors = get_composition_priors(n_cells, genotype_freq, mutation_rate)
-    RH_priors = log_priors[:n_cells+1]
-    HA_priors = log_priors[n_cells:]
+    composition_priors = get_composition_priors(n_cells, genotype_freq, mutation_rate)
+    RH_priors = composition_priors[:n_cells+1]
+    HA_priors = composition_priors[n_cells:]
 
     # multiprocessing
     pool = mp.Pool(n_threads)
@@ -155,13 +155,8 @@ def get_posteriors(ref, alt, genotype_freq = {'R': 1/3, 'H': 1/3, 'A': 1/3}, mut
 if __name__ == '__main__': 
     import pandas as pd
     
-    df_ref = pd.read_csv('./Data/glioblastoma_BT_S2/ref.csv', index_col = 0)
-    df_alt = pd.read_csv('./Data/glioblastoma_BT_S2/alt.csv', index_col = 0)
-    
-    ref = df_ref.to_numpy(dtype = float)
-    alt = df_alt.to_numpy(dtype = float)
-    
-    del df_ref, df_alt
+    ref = pd.read_csv('./Data/glioblastoma_BT_S2/ref.csv', index_col = 0).to_numpy(dtype = float)
+    alt = pd.read_csv('./Data/glioblastoma_BT_S2/alt.csv', index_col = 0).to_numpy(dtype = float)
     
     print(get_posteriors(ref[:20], alt[:20], n_threads = 6))
     

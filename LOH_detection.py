@@ -6,8 +6,7 @@ from utilities import *
 
 
 
-
-def loss_likelihood(ref1, alt1, ref2, alt2, homo1, homo2): 
+def corr_likelihood(ref1, alt1, ref2, alt2, homo1, homo2): 
     N = ref1.size
     
     likelihoods = np.ones((N+1, N+1)) * (-np.inf) 
@@ -22,35 +21,48 @@ def loss_likelihood(ref1, alt1, ref2, alt2, homo1, homo2):
             likelihoods[n+1, 1:n+2] = np.logaddexp(l1, l2)
             
     return logsumexp(likelihoods[N,1:-1] + get_k_mut_priors(N, affect_all = False))
+
+
+def get_corr_likelihoods(ref, alt, homos): 
+    n_loci = ref.shape[0]
+    return np.array([corr_likelihood(ref[i,:], alt[i,:], ref[i+1,:], alt[i+1,:], homos[i], homos[i+1]) for i in tqdm(range(n_loci-1))])
     
     
-def retention_likelihood(ref1, alt1, ref2, alt2, homo1, homo2): 
-    N = ref1.size
-    priors_single_direction = get_k_mut_priors(N, affect_all = False)
-    priors = np.logaddexp(priors_single_direction, np.flip(priors_single_direction)) - np.log(2)
-    likelihood1 = logsumexp(likelihood_k_mut(ref1, alt1, 'H', homo1)[1:-1] + priors)
-    likelihood2 = logsumexp(likelihood_k_mut(ref2, alt2, 'H', homo2)[1:-1] + priors)
-    #print(likelihood1)
-    #print(likelihood2)
+def get_indep_likelihoods(ref, alt, homos): 
+    n_loci = ref.shape[0]
+    n_cells = ref.shape[1]
     
-    return likelihood1 + likelihood2
+    k_mut_priors = np.logaddexp(get_k_mut_priors(n_cells, affect_all = False), np.flip(get_k_mut_priors(n_cells, affect_all = False))) - np.log(2)
+    
+    likelihoods = [logsumexp(likelihood_k_mut(ref[i,:], alt[i,:], 'H', homos[i])[1:-1] + k_mut_priors) for i in tqdm(range(n_loci))]
+    
+    return np.array([likelihoods[i] + likelihoods[i+1] for i in range(n_loci-1)])
     
 
-def get_loss_posteriors(ref, alt, homos, priors, log_scale = False): 
-    n_mutated = len(homos)
+def get_corr_posteriors(ref, alt, homos, corr_prior, log_scale = False): 
+    n_loci = ref.shape[0]
+    n_cells = ref.shape[1]
     
-    result = np.zeros(n_mutated-1)
+    corr_likelihoods = get_corr_likelihoods(ref, alt, homos)
+    indep_likelihoods = get_indep_likelihoods(ref, alt, homos)
     
-    for i in tqdm(range(n_mutated-1)): 
-        loss_joint = loss_likelihood(ref[i,:], alt[i,:], ref[i+1,:], alt[i+1,:], homos[i], homos[i+1]) + priors['loss']
-        ret_joint = retention_likelihood(ref[i,:], alt[i,:], ref[i+1,:], alt[i+1,:], homos[i], homos[i+1]) + priors['ret']
-        result[i] = loss_joint - np.logaddexp(loss_joint, ret_joint)
+    corr_joints = corr_likelihoods + np.log(corr_prior)
+    indep_joints = indep_likelihoods + np.log(1 - corr_prior)
+    result = corr_joints - np.logaddexp(corr_joints, indep_joints)
     
     if log_scale: 
         return result
     else: 
         return np.exp(result)
 
+
+def get_loss_probabilities(ref, alt, homos, corr_rate = 1/2): 
+    corr_posteriors = get_corr_posteriors(ref, alt, homos, corr_rate)
+    left_posteriors = np.concatenate(([0], corr_posteriors))
+    right_posteriors = np.concatenate((corr_posteriors, [0]))
+    
+    return 1 - (1 - left_posteriors) * (1 - right_posteriors)
+    # return np.max(np.stack((left_posteriors, right_posteriors)), axis = 0)
     
 
     
@@ -60,14 +72,8 @@ def get_loss_posteriors(ref, alt, homos, priors, log_scale = False):
 if __name__ == '__main__': 
     import pandas as pd
     
-    df_ref = pd.read_csv('./Data/glioblastoma_BT_S2/ref.csv', index_col = 0)
-    df_alt = pd.read_csv('./Data/glioblastoma_BT_S2/alt.csv', index_col = 0)
-    
-    ref = df_ref.to_numpy(dtype = float)
-    alt = df_alt.to_numpy(dtype = float)
-    
-    del df_ref
-    del df_alt
+    ref = pd.read_csv('./Data/glioblastoma_BT_S2/ref.csv', index_col = 0).to_numpy(dtype = float)
+    alt = pd.read_csv('./Data/glioblastoma_BT_S2/alt.csv', index_col = 0).to_numpy(dtype = float)
     
     ref1 = ref[4,:]
     alt1 = alt[4,:]
@@ -77,6 +83,6 @@ if __name__ == '__main__':
     homo1 = 'R'
     homo2 = 'R'
     
-    print(loss_likelihood(ref1, alt1, ref2, alt2, homo1, homo2))
-    print(retention_likelihood(ref1, alt1, ref2, alt2, homo1, homo2))
+    print(corr_likelihood(ref1, alt1, ref2, alt2, homo1, homo2))
+    print(sep_likelihood(ref1, alt1, ref2, alt2, homo1, homo2))
     

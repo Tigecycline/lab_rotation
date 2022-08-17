@@ -72,13 +72,13 @@ def get_loss_probabilities(ref, alt, homos, corr_rate = 1/2):
 if __name__ == '__main__': 
     import pandas as pd
     
-    ref = pd.read_csv('./Data/glioblastoma_BT_S2/ref.csv', index_col = 0).to_numpy(dtype = float)
-    alt = pd.read_csv('./Data/glioblastoma_BT_S2/alt.csv', index_col = 0).to_numpy(dtype = float)
+    #ref = pd.read_csv('./Data/glioblastoma_BT_S2/ref.csv', index_col = 0).to_numpy(dtype = float)
+    #alt = pd.read_csv('./Data/glioblastoma_BT_S2/alt.csv', index_col = 0).to_numpy(dtype = float)
     
-    ref1 = ref[4,:]
-    alt1 = alt[4,:]
-    ref2 = ref[77,:]
-    alt2 = alt[77,:]
+    ref1 = np.zeros(10)
+    alt1 = np.zeros(10)
+    ref2 = np.zeros(10)
+    alt2 = np.zeros(10)
     
     homo1 = 'R'
     homo2 = 'R'

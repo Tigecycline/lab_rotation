@@ -31,20 +31,54 @@ class TreeNode:
     
     @property
     def isempty(self): 
-        ''' emtpy means the node contains no mutation '''
         return self.mutations == []
     
     
-    def __lt__(self, other): # makes the class sortable
-        return self.mutations < other.mutations
+    @property
+    def grand_parent(self): 
+        return self.parent.parent
     
     
-    def __eq__(self, other): 
-        ''' 
-        Tests equality of two subtrees without considering node names
-        If used after self.sort, tests isomorphism of the two subtrees
-        '''
-        return self.mutations == other.mutations and self.children == other.children
+    @property
+    def ancestors(self): 
+        ''' generator to traverse all ancestors from most to least recent '''
+        if self.parent is not None: 
+            yield self.parent
+            yield from self.parent.ancestors
+    
+    
+    @property
+    def siblings(self): 
+        ''' generator to traverse all siblings '''
+        for node in self.parent.children: 
+            if node is not self: 
+                yield node
+    
+    
+    @property
+    def leaves(self): 
+        ''' generator to traverse all descendants that are leaves '''
+        if node.isleaf:
+            yield node
+        else: 
+            for child in node.children: 
+                yield from child.leaves
+    
+    
+    @property
+    def DFS(self): 
+        ''' generator to traverse subtree in DFS order '''
+        yield self
+        for child in self.children: 
+            yield from child.DFS
+    
+    
+    @property
+    def reverse_DFS(self): 
+        ''' generator to traverse subtree in reversed DFS order '''
+        for child in self.children: 
+            yield from child.reverse_DFS
+        yield self
     
     
     def __str__(self): 
@@ -60,15 +94,24 @@ class TreeNode:
             result += 'children: ' + str([child.name for child in self.children]) + '\n'
         result += 'mutations: ' + str(self.mutations) + '\n'
         return result
+        
+    
+    def __lt__(self, other): # makes the class sortable
+        return self.mutations < other.mutations
     
     
-    def descends_from(self, other): 
-        if self.parent is None: 
+    def isomorphic_to(self, other): 
+        ''' 
+        Must be used after self.sort, tests isomorphism of the two subtrees
+        '''
+        if self.mutations != other.mutations: 
             return False
-        elif self.parent is other or self.parent.descends_from(other): 
-            return True
-        else: 
+        if len(self.children) != len(other.children): 
             return False
+        for i in range(len(self.children)): 
+            if not self.children[i].isomorphic_to(other.children[i]): 
+                return False
+        return True
     
     
     def sort(self): 
@@ -79,10 +122,21 @@ class TreeNode:
             child.sort() 
     
     
+    def descends_from(self, other): 
+        ''' N.B. a node is considered descendant of itself '''
+        # alternative implementation:
+        # return self is other or self.parent is not None and self.parent.descends_from(other)
+        try: 
+            return self is other or self.parent.descends_from(other)
+        except: 
+            return False
+    
+    
     def assign_parent(self, new_parent): 
         old_parent = self.parent
         self.parent = new_parent
-        new_parent.children.append(self)
+        if new_parent is not None: 
+            new_parent.children.append(self)
         if old_parent is not None: 
             old_parent.remove_child(self)
     
@@ -160,12 +214,3 @@ class TreeNode:
         new_node.mutations = self.mutations
         return new_node
 
-
-
-
-def random_binary_tree(nodes): 
-    '''
-    Create a random binary tree on selected nodes 
-    '''
-    # nodes without a parent
-    nodes = nodes + [TreeNodes]

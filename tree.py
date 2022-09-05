@@ -1,107 +1,137 @@
 import numpy as np
 import graphviz
-from tree_node import TreeNode
+import copy
+
+from tree_node import *
 
 
 
 
 class CellTree: 
-    def __init__(self, likelihoods1, likelihoods2, gt1, gt2, reversible = None): 
-        self.L = likelihoods1.shape[0] # number of leaves (observed cells)
-        self.M = likelihoods1.shape[1] # number of mutations
-        self.nodes = [TreeNode(i) for i in range(self.N)] # TBC: use dictionary instead
-        self.gt1 = gt1 
-        self.gt2 = gt2 
-        self.L1 = np.sum(likelihoods1, axis = 0) # log-likelihood all cells have gt1
-        self.L2 = np.sum(likelihoods2, axis = 0) # log-likelihood all cells have gt2
-        self.LLR = np.zeros((self.N, self.M)) # log-likelihood ratio of each node
-        self.LLR[:self.L,:] = likelihoods2 - likelihoods1
+    def __init__(self, n_cells, n_mut = None, mutation_tree = None): 
+        self.n_cells = n_cells 
+        self.n_mut = n_mut
+        self.nodes = [TreeNode(i) for i in range(2 * self.n_cells - 1)]
+        self.root = None
         
-        if reversible is None: # if reversibility not given, consider all mutations as irreversible
-            self.reversible = [False] * self.M 
+        self.L1 = None
+        self.L2 = None
+        self.LLR = None # log-likelihood ratio of each node
+        self.reversible = None
+        
+        if mutation_tree is not None: 
+            self.fit_mutation_tree(mutation_tree)
         else: 
-            self.reversible = reversible 
+            self.randomize()
         
-        self.refresh_edges()
-        self.refresh_LLR(self.root)
-        self.refresh_mutations()
-    
     
     @property
-    def N(self): 
+    def n_nodes(self): 
         ''' number of nodes '''
-        return 2*self.L
+        return len(self.nodes)
     
     
     @property
-    def root(self): 
-        return self.nodes[-1]
+    def likelihood(self): 
+        ''' likelihood of the entire tree including mutations '''
+        result = 0
+        for node in self.root.DFS: 
+            for mut in node.mutations: 
+                result += self.LLR[node.name, mut]
+        result += self.L1
+        return result
     
     
-    def create_random_subtree(self, nodes_idx, new_idx): 
+    def copy(self): 
+        return copy.deepcopy(self)
+    
+    
+    def copy_structure(self, other): 
+        self.nodes = copy.deepcopy(other.nodes)
+    
+    
+    def random_subtree(self, nodes_idx, internal_idx): 
         '''
         Create a random binary tree on selected nodes 
         nodes_idx: indices of the selected nodes 
-        new_idx: nodes from this index are used as internal nodes of the subtree
+        internal_idx: nodes from this index are used as internal nodes of the subtree
         '''
-        remaining = nodes_idx # indices of nodes without parent
-        parent_idx = new_idx
+        remaining = nodes_idx.copy() # indices of nodes without parent
         for i in range(len(nodes_idx) - 1): 
             children_idx = np.random.choice(remaining, size = 2, replace = False)
             # TBC: clear existing children of the parent 
-            self.nodes[children_idx[0]].assign_parent(self.nodes[parent_idx])
-            self.nodes[children_idx[1]].assign_parent(self.nodes[parent_idx])
+            self.nodes[children_idx[0]].assign_parent(self.nodes[internal_idx])
+            self.nodes[children_idx[1]].assign_parent(self.nodes[internal_idx])
             remaining.remove(children_idx[0])
             remaining.remove(children_idx[1])
-            remaining.append(parent_idx)
-            parent_idx += 1
+            remaining.append(internal_idx)
+            internal_idx += 1
     
     
-    def read_mutation_tree(self, mutation_tree): 
+    def randomize(self): 
+        '''
+        Shuffle the entire tree
+        '''
+        self.random_subtree([i for i in range(self.n_cells)], self.n_cells)
+        self.root = self.nodes[-1]
+    
+    
+    def fit_mutation_tree(self, mutation_tree): 
         '''
         Works only when the mutation tree is properly sorted, i.e. children nodes are found after their parents (which should be the case if the mutation tree is generated using the default constructor)
         '''
         mutation_nodes = mutation_tree.nodes.copy()
-        leaves = [np.where(mutation_tree.attachments == i)[0].tolist() for i in range(self.L)] # attached cells & other internal nodes
-        print(leaves)
+        leaves = [np.where(mutation_tree.attachments == i)[0].tolist() for i in range(self.L)] # cells attached to each mutation node
         
-        idx = self.L
+        current_idx = self.n_cells
         while mutation_nodes: 
             node = mutation_nodes.pop() # unprocessed node with highest index, all its children should be processed already
-            print('Processing node', node.name)
-            print('The leaves are:', leaves[node.name])
             n_leaves = len(leaves[node.name])
-            print(node)
             if n_leaves == 0: 
                 pass
             elif n_leaves == 1: 
                 leaves[node.parent.name].append(leaves[node.name][0]) # pass the child to its grandparent
             else: 
-                self.create_random_subtree(leaves[node.name], idx)
+                self.create_random_subtree(leaves[node.name], current_idx)
                 if not node.isroot: 
-                    subtree_root = idx + n_leaves - 2
+                    subtree_root = current_idx + n_leaves - 2
                     leaves[node.parent.name].append(subtree_root)
-                    idx = subtree_root + 1 
-        self.nodes[-2].assign_parent(self.root)
+                    current_idx = subtree_root + 1 
+        self.root = self.nodes[-1]
     
     
-    def refresh_edges(self, mutation_tree = None): 
-        if mutation_tree is None: # random tree if no mutation tree is provided
-            self.create_random_subtree([i for i in range(self.L)], self.L)
-            self.nodes[-2].assign_parent(self.root)
+    def fit_likelihoods(self, likelihoods1, likelihoods2, reversible = None): 
+        assert(self.n_cells == likelihoods1.shape[0] and self.n_cells == likelihoods2.shape[0])
+        
+        if self.n_mut is None: 
+            self.n_mut = likelihoods1.shape[1]
+            assert(self.n_mut == likelihoods2.shape[1])
         else: 
-            self.read_mutation_tree(mutation_tree)
+            assert(self.n_mut == likelihoods1.shape[1] and self.n_mut == likelihoods2.shape[1])
+        
+        self.L1 = np.sum(likelihoods1, axis = 0) # log-likelihood all cells have gt1
+        self.L2 = np.sum(likelihoods2, axis = 0) # log-likelihood all cells have gt2
+        self.LLR = np.zeros((self.n_nodes, self.n_mut))
+        self.LLR[:self.L,:] = likelihoods2 - likelihoods1
+        if reversible is None: 
+            self.reversible = [False] * self.M # if reversibility is not provided, consider all mutations irreversible
+        else: 
+            self.reversible = reversible
     
     
-    def refresh_LLR(self, node): 
-        if not node.isleaf: # nothing to be done for leaves
+    def refresh_internal_LLR(self, node):
+        '''
+        Recalculate the LLR values for internal nodes in a subtree
+        node: MRCA of the subtree, if set to root, recalculate LLR for the entire tree
+        '''
+        if not node.isleaf: # nothing to be done for leaves 
             self.LLR[node.name,:] = 0 # erase old LLR 
             for child in node.children: 
-                self.refresh_LLR(child)
-                self.LLR[node.name,:] += self.LLR[child.name,:]
+                self.refresh_LLR(child) 
+                self.LLR[node.name,:] += self.LLR[child.name,:] 
     
     
-    def refresh_mutations(self): 
+    def assign_mutations(self): 
         for node in self.nodes: 
             node.clear_mutations()
         best_nodes = np.argmax(self.LLR, axis = 0)
@@ -109,20 +139,87 @@ class CellTree:
             self.nodes[best_nodes[i]].add_mutation(i)
     
     
-    def move_subtree(self, mrca_idx, target_idx): 
-        # Todo: test this function
-        assert(mrca_idx < self.N - 1 and target_idx < self.N - 1)
-        mrca = self.nodes[mrca_idx]
-        target = self.nodes[target_idx]
-        assert(mrca is not self.root and mrca is not target)
-        assert(not target.descends_from(mrca))
-        
-        
+    def fit(self, mutation_tree = None, likelihoods1 = None, likelihoods2 = None, reversible = None): 
+        if mutation_tree is not None: 
+            self.fit_mutation_tree(mutation_tree)
+        if likelihoods1 is not None and likelihoods2 is not None: 
+            self.fit_likelihoods(likelihoods1, likelihoods2, reversible)
+        self.refresh_internal_LLR()
+        self.assign_mutations()
     
     
-    def node_info(self): 
-        for node in self.nodes: 
-            print(node)
+    def prune_insert(self, subroot, target): 
+        '''
+        Prune a subtree and insert it somewhere else
+        subroot: root of the subtree that gets pruned
+        target: self.nodes[target_idx] # subtree is inserted to the edge above target
+        '''
+        # TBC: more elegant implementation? 
+        #assert(not target.descends_from(subroot)) # no longer a tree if insert to descendant 
+        #assert(target is not subroot.parent) # parent of subroot no longer exists after pruning
+        #for sibling in subroot.siblings: # tree not changed if insert to a sibling
+        #    assert(target is not sibling)
+        
+        # the parent of subroot is reused as the new node created when inserting to an edge
+        for sibling in subroot.siblings: 
+            sibling.assign_parent(subroot.grand_parent)
+            if sibling.parent is None: 
+                self.root = sibling
+        subroot.parent.assign_parent(target.parent) 
+        if target.parent is None: 
+            self.root = subroot.parent
+        target.assign_parent(subroot.parent)
+    
+    
+    def subtree_swap(self, subroot1, subroot2): 
+        #assert(not subroot1.descends_from(subroot2)) # no longer a tree if swap with descendant
+        #assert(not subroot2.descends_from(subroot1))
+        parent1 = subroot1.parent
+        subroot1.assign_parent(subroot2.parent)
+        subroot2.assign_parent(parent1)
+    
+    
+    def random_move(self, weights = [0.5, 0.5]): 
+        operation = np.random.choice(2, p = weights)
+        
+        non_root_idx = np.delete(np.arange(self.n_nodes), self.root.name) 
+        
+        # Plbm: swapping with or insertion above the sibling makes no sense
+        # However, exclusion of the sibling may lead to the situation 
+        # in which no suitable target or swap partner can be found
+        
+        if operation == 0: # prune subtree & insert
+            subroot = self.nodes[np.random.choice(non_root_idx)]
+            
+            # insertion above descendant destroys tree structure
+            exclude = [node.name for node in subroot.DFS] 
+            # insertion above a sibling makes no sense since tree is not changed
+            #exclude += [sibling.name for sibling in subroot.siblings] 
+            # parent no longer exists after pruning since tree is strictly binary
+            exclude.append(subroot.parent.name) 
+            
+            suitable_idx = np.delete(np.arange(self.n_nodes), exclude)
+            target = self.nodes[np.random.choice(suitable_idx)]
+            if target in subroot.siblings: 
+                pass
+            else: 
+                self.prune_insert(subroot, target)
+            #print('Inserted', subroot.name, 'above', target.name)
+            
+        elif operation == 1: # swap two subtrees
+            subroot1 = self.nodes[np.random.choice(non_root_idx)]
+            
+            exclude = [node.name for node in subroot1.DFS]
+            exclude += [node.name for node in subroot1.ancestors]
+            # exclude += [node.name for node in subroot1.siblings]
+            suitable_idx = np.delete(np.arange(self.n_nodes), exclude)
+            
+            subroot2 = self.nodes[np.random.choice(suitable_idx)]
+            if subroot2 in subroot1.siblings: 
+                pass
+            else: 
+                self.subtree_swap(subroot1, subroot2)
+            #print('Swapped', subroot1.name, 'and', subroot2.name)
     
     
     def to_graphviz(self, filename = None, show = False): 
@@ -131,58 +228,46 @@ class CellTree:
             if node.isleaf: 
                 dg.node(str(node.name), shape = 'circle')
             else: 
-                dg.node(str(node.name), label = '', shape = 'circle')
-            for child in node.children: 
-                label = ', '.join(['m' + str(m) for m in child.mutations])
-                dg.edge(str(node.name), str(child.name), label = label)
+                dg.node(str(node.name), shape = 'circle', style = 'filled', color = 'gray')
+            
+            label = ', '.join(['m' + str(m) for m in node.mutations])
+            if node.isroot: 
+                dg.node('dummy', label = '', shape = 'point')
+                dg.edge('dummy', str(node.name), label = label)
+            else: 
+                dg.edge(str(node.parent.name), str(node.name), label = label)
+        
         if show: 
             dg.view()
+        
         return dg
 
 
 
 
 class MutationTree:     
-    def __init__(self, likelihoods1 = None, likelihoods2 = None, cell_tree = None): 
-        # \begin {for test}
-        if likelihoods1 is None: 
-            self.L = 8
-            
-            self.nodes = [TreeNode(i) for i in range(7)]
-            self.nodes[1].assign_parent(self.nodes[0])
-            self.nodes[2].assign_parent(self.nodes[0])
-            self.nodes[3].assign_parent(self.nodes[0])
-            self.nodes[4].assign_parent(self.nodes[1])
-            self.nodes[5].assign_parent(self.nodes[2])
-            self.nodes[6].assign_parent(self.nodes[2])
-            
-            self.nodes[1].mutations = [0,1]
-            self.nodes[2].mutations = [2]
-            self.nodes[3].mutations = [3]
-            self.nodes[4].mutations = [4]
-            self.nodes[5].mutations = [5]
-            self.nodes[6].mutations = [6]
-            
-            self.attachments = np.array([1,1,0,5,5,5,3,2], dtype = int)
-            return
-            
-        # \end {for test}
-        self.L = likelihoods1.shape[0] # number of leaves (observed cells)
-        self.M = likelihoods1.shape[1] # number of mutations
+    def __init__(self, n_cells, cell_tree = None): 
+        self.n_cells = n_cells
+        self.n_mut = None
         
-        if cell_tree is None: 
+        if cell_tree is None: # if cell tree not given, put all mutations at one node
             self.nodes = [TreeNode(0), TreeNode(1)]
-            self.nodes[1].mutations = [i for i in range(self.M)] # all mutations at one node
+            self.nodes[1].assign_parent(self.nodes[0])
+            self.nodes[1].mutations = [i for i in range(self.M)] 
         else: 
-            self.read_cell_tree(cell_tree)
-            self.sort()
+            self.fit_cell_tree(cell_tree)
+            self.root.sort()
         
-        self.refresh_likelihoods(likelihoods1, likelihoods2)
+        self.LLR = None
+        self.node_likelihoods = None
+        self.attachments = None
+        
+        self.fit_likelihoods(likelihoods1, likelihoods2)
         self.attach_cells()
     
     
     @property
-    def N(self): 
+    def n_nodes(self): 
         return len(self.nodes)
     
     
@@ -195,33 +280,28 @@ class MutationTree:
         return self.root == other.root
     
     
-    def sort(self): 
-        self.root.sort()
-    
-    
-    def read_cell_tree(self, cell_tree): 
-        self.nodes = cell_tree.root.create_NED_tree()
+    def fit_cell_tree(self, cell_tree): 
+        self.nodes = [TreeNode(0)] + cell_tree.root.create_NED_tree()
+        self.nodes[1].assign_parent(self.root)
         for i in range(self.N): 
             self.nodes[i].name = i
     
     
-    def refresh_likelihoods(self, likelihoods1, likelihoods2): 
-        sm_LLR = likelihoods2 - likelihoods1 # log-likelihood ratio for single mutations
-        self.likelihoods = np.zeros((self.L, self.N)) # likelihood of cell i attached to node j
+    def fit_likelihoods(self, likelihoods1, likelihoods2): 
+        self.LLR = likelihoods2 - likelihoods1 # log-likelihood ratio for single mutations
+        self.likelihoods = np.zeros()
         self.likelihoods[:,0] = np.sum(likelihoods1, axis = 1) # root has no mutation
-        # The construction of the tree ensures that, in self.nodes, children are always found after their parents. So we can traverse the nodes using the order in self.nodes. 
-        for node in self.nodes[1:]: 
+        for node in self.root.DFS: 
             self.likelihoods[:,node.name] = self.likelihoods[:,node.parent.name] + np.sum(sm_LLR[:,node.mutations], axis = 1)
-        
+       
+    
+    def refresh_cell_LLR(self): 
+        self.likelihoods = np.zeros((self.L, self.N)) # likelihood of cell i attached to node j
+    
     
     def attach_cells(self): 
         self.attachments = np.argmax(self.likelihoods, axis = 1)
         # TBC: use other data structures, e.g. a list of lists, or a boolean matrix
-    
-    
-    def node_info(self): 
-        for node in self.nodes: 
-            print(node)
     
     
     def attachment_info(self): 

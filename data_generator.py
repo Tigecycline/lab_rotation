@@ -30,7 +30,7 @@ class DataGenerator:
         self.tree = CellTree(n_cells, n_mut)
         mut_locations = np.random.choice(self.tree.n_nodes, size = n_mut, replace = True)
         for i in range(n_mut): 
-            self.tree.nodes[mut_locations[i]].add_mutation(i)
+            self.tree.mutations[mut_locations[i]].append(i)
                 
     
     def generate_single_read(self, genotype, coverage): 
@@ -55,11 +55,10 @@ class DataGenerator:
             self.random_tree(n_cells, n_mut)
         genotypes = np.empty((n_cells, n_mut), dtype = str)
         for i in range(n_cells):
-            cell = self.tree.nodes[i]  
             mutated = np.zeros(n_mut, dtype = bool)
-            mutated[cell.mutations] = True
-            for ancestor in cell.ancestors: 
-                mutated[ancestor.mutations] = True
+            mutated[self.tree.mutations[i]] = True
+            for ancestor in self.tree.nodes[i].ancestors: 
+                mutated[self.tree.mutations[ancestor.ID]] = True
             genotypes[i,:] = np.where(mutated, gt2, gt1)
         
         ref = np.empty((n_cells, n_mut))
@@ -69,7 +68,7 @@ class DataGenerator:
                 coverage = self.coverage_sampler()
                 ref[i,j], alt[i,j] = self.generate_single_read(genotypes[i,j], coverage)
         
-        return alt, ref, gt1, gt2, genotypes
+        return ref, alt, gt1, gt2, genotypes
         
 
         

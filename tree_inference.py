@@ -1,19 +1,9 @@
 from tree import *
-from mutation_detection import read_likelihood
+from mutation_detection import read_likelihood, get_likelihoods
 
 
 
-def hill_climb(ref, alt, gt1, gt2, init_tree = None, timeout = 256, convergence = 32, weights = [0.5, 0.5]): 
-    print('Calculating likelihoods...')
-    n_cells = ref.shape[0]
-    n_mut = ref.shape[1]
-    likelihoods1 = np.empty((n_cells, n_mut))
-    likelihoods2 = np.empty((n_cells, n_mut))
-    for i in range(n_cells): 
-        for j in range(n_mut): 
-            likelihoods1[i,j] = read_likelihood(ref[i,j], alt[i,j], gt1[j])
-            likelihoods2[i,j] = read_likelihood(ref[i,j], alt[i,j], gt2[j])
-    
+def hill_climb(likelihoods1, likelihoods2, init_tree = None, timeout = 256, convergence = 32, weights = [0.5, 0.5]): 
     print('Initializing tree...')
     if init_tree is None: 
         tree = CellTree(likelihoods1.shape[0])

@@ -42,6 +42,10 @@ class CellTree:
         return result
     
     
+    def clear_mutations(self): 
+        self.mutations = [[] for i in range(self.n_nodes)]
+    
+    
     def copy(self): 
         return copy.deepcopy(self)
     
@@ -182,7 +186,11 @@ class CellTree:
             else: 
                 dg.node(str(node.ID), shape = 'circle', style = 'filled', color = 'gray')
             
-            label = ', '.join(['m' + str(m) for m in self.mutations[node.ID]])
+            if self.mutations[node.ID]: 
+                label = 'm' + ', '.join([str(m) for m in self.mutations[node.ID]])
+            else: 
+                label = ''
+            
             if node.isroot: 
                 dg.node('dummy', label = '', shape = 'point')
                 dg.edge('dummy', str(node.ID), label = label)

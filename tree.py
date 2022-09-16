@@ -124,18 +124,15 @@ class CellTree:
             self.reversible = reversible
     
     
-    def refresh_internal_LLR(self, node = None):
+    def refresh_internal_LLR(self):
         '''
         Recalculate the LLR values for internal nodes in a subtree
         node: MRCA of the subtree, if set to root, recalculate LLR for the entire tree
         '''
-        if node is None: 
-            node = self.root
-        if not node.isleaf: # nothing to be done for leaves 
-            self.LLR[node.ID,:] = 0 # erase old LLR 
-            for child in node.children: 
-                self.refresh_internal_LLR(child) 
-                self.LLR[node.ID,:] += self.LLR[child.ID,:] 
+        for node in self.root.reverse_DFS: 
+            if not node.isleaf: # nothing to be done for leaves 
+                children_ID = [child.ID for child in node.children]
+                self.LLR[node.ID,:] = np.sum(self.LLR[children_ID,:], axis = 0) 
     
     
     def assign_mutations(self): 
@@ -162,14 +159,23 @@ class CellTree:
         '''
         # TBC: any more elegant implementation? 
         # the parent of subroot is reused as the new node created when inserting to an edge
+        anchor = subroot.parent
+        
         for sibling in subroot.siblings: 
-            sibling.assign_parent(subroot.grand_parent)
-            if sibling.parent is None: 
-                self.root = sibling
-        subroot.parent.assign_parent(target.parent) 
-        if target.parent is None: 
-            self.root = subroot.parent
-        target.assign_parent(subroot.parent)
+            if anchor.isroot: # if pruned at root, sibling becomes new root
+                anchor.remove_child(sibling)
+                sibling.parent = None
+                self.root = sibling 
+            else: 
+                sibling.assign_parent(anchor.parent)
+        
+        if target.isroot: # if inserted to original root, anchor becomes new root
+            anchor.parent.remove_child(anchor)
+            anchor.parent = None
+            self.root = anchor
+        else: 
+            anchor.assign_parent(target.parent) 
+        target.assign_parent(anchor)
     
     
     def subtree_swap(self, subroot1, subroot2): 
@@ -206,17 +212,15 @@ class CellTree:
 
 
 class MutationTree:     
-    def __init__(self, n_cells, cell_tree = None): 
+    def __init__(self, n_mut, n_cells = None, cell_tree = None): 
+        self.n_mut = n_mut
         self.n_cells = n_cells
-        self.n_mut = None
         
-        if cell_tree is None: # if cell tree not given, put all mutations at one node
-            self.nodes = [TreeNode(0), TreeNode(1)]
-            self.nodes[1].assign_parent(self.nodes[0])
-            self.nodes[1].mutations = [i for i in range(self.M)] 
+        if cell_tree is None: 
+            self.nodes = [TreeNode(i) for i in range(self.n_mut + 1)] # one additional node as root
+            self.root = self.nodes[-1]
         else: 
             self.fit_cell_tree(cell_tree)
-            self.root.sort()
         
         self.LLR = None
         self.node_likelihoods = None
@@ -262,10 +266,6 @@ class MutationTree:
     def attach_cells(self): 
         self.attachments = np.argmax(self.likelihoods, axis = 1)
         # TBC: use other data structures, e.g. a list of lists, or a boolean matrix
-    
-    
-    def attachment_info(self): 
-        print(self.attachments)
         
     
     def to_graphviz(self, filename = None, show = False): 
@@ -286,65 +286,3 @@ class MutationTree:
     
     
     
-
-
-
-
-        
-        
-        
-        
-        
-        
-
-if __name__ == '__main__': 
-    #import pandas as pd
-    
-    #ref = pd.read_csv('./Data/glioblastoma_BT_S2/ref.csv', index_col = 0).to_numpy(dtype = float)
-    #alt = pd.read_csv('./Data/glioblastoma_BT_S2/alt.csv', index_col = 0).to_numpy(dtype = float)
-    '''
-    likelihoods1 = np.log(np.array([[1/2, 1/2], 
-                                    [1/4, 1/2], 
-                                    [1/4, 1/4]]))
-
-    likelihoods2 = np.log(np.array([[1/4, 1/4], 
-                                    [1/2, 1/4], 
-                                    [1/2, 1/2]]))
-    
-    gt1 = ['H', 'H']
-    gt2 = ['R', 'R']
-    
-    ct = CellTree(likelihoods1, likelihoods2, gt1, gt2)
-    ct.node_info()
-    
-    print('**********************************')
-    mt = MutationTree(likelihoods1, likelihoods2, ct)b
-    mt.node_info()
-    mt.attachment_info()
-    print()
-    
-    print('**********************************')
-    ct.read_mutation_tree(mt)
-    ct.node_info()
-    '''
-    
-    mt = MutationTree()
-    
-    likelihoods1 = np.log(np.array([[1/2, 1/2], 
-                                    [1/4, 1/2], 
-                                    [1/4, 1/4]]))
-
-    likelihoods2 = np.log(np.array([[1/4, 1/4], 
-                                    [1/2, 1/4], 
-                                    [1/2, 1/2]]))
-    
-    gt1 = ['H', 'H']
-    gt2 = ['R', 'R']
-    
-    ct = CellTree(likelihoods1, likelihoods2, gt1, gt2)
-    
-    ct.nodes = [TreeNode(i) for i in range(16)]
-    ct.L = 8
-    ct.read_mutation_tree(mt)
-    
-    ct.node_info()

@@ -1,6 +1,7 @@
 from tree import *
 from scipy.stats import poisson, betabinom
 from mutation_detection import get_k_mut_priors
+from tqdm.notebook import tqdm
 
 
 
@@ -96,7 +97,7 @@ class DataGenerator:
         
         ref = np.empty((self.n_cells, self.n_mut))
         alt = np.empty((self.n_cells, self.n_mut))
-        for i in range(self.n_cells): 
+        for i in tqdm(range(self.n_cells)): 
             for j in range(self.n_mut): 
                 coverage = self.coverage_sampler()
                 ref[i,j], alt[i,j] = self.generate_single_read(genotypes[i,j], coverage)

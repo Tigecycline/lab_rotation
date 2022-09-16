@@ -48,16 +48,6 @@ class TreeNode:
     
     
     @property
-    def leaves(self): 
-        ''' traverse all descendants (including self) that are leaves '''
-        if node.isleaf:
-            yield node
-        else: 
-            for child in node.children: 
-                yield from child.leaves
-    
-    
-    @property
     def DFS(self): 
         ''' traverse subtree in DFS order '''
         yield self
@@ -84,7 +74,6 @@ class TreeNode:
             result += 'has no children\n'
         else: 
             result += 'children: ' + str([child.ID for child in self.children]) + '\n'
-        result += 'mutations: ' + str(self.mutations) + '\n'
         return result
         
     
@@ -126,8 +115,7 @@ class TreeNode:
     def assign_parent(self, new_parent): 
         old_parent = self.parent
         self.parent = new_parent
-        if new_parent is not None: 
-            insort(new_parent.children, self) # keep children sorted (by ID)
+        insort(new_parent.children, self) # keep children sorted (by ID)
         if old_parent is not None: 
             old_parent.remove_child(self)
     

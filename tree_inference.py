@@ -1,14 +1,17 @@
 from tree import *
 from mutation_detection import read_likelihood, get_likelihoods
+from utilities import randint_with_exclude
 
 
 
-def hill_climb(likelihoods1, likelihoods2, init_tree = None, timeout = 256, convergence = 32, weights = [0.5, 0.5]): 
+def hill_climb(likelihoods1, likelihoods2, init_tree = None, timeout = 1024, convergence = 64, weights = [0.5, 0.5]): 
     print('Initializing tree...')
     if init_tree is None: 
         tree = CellTree(likelihoods1.shape[0])
     else: 
         tree = init_tree.copy()
+    # Nothing to be done for trees with 2 or less leaves, since there is only one possible tree
+    assert(tree.n_cells > 2) 
     tree.fit(likelihoods1, likelihoods2)
     likelihood_history = [tree.likelihood]
     
@@ -61,26 +64,29 @@ def hill_climb(likelihoods1, likelihoods2, init_tree = None, timeout = 256, conv
         print('Converged after %d steps' % n_steps)
     
     return tree, likelihood_history
-        
 
 
 def propose_prune_insert(tree): 
-    non_root_idx = np.delete(np.arange(tree.n_nodes), tree.root.ID) 
-    subroot = tree.nodes[np.random.choice(non_root_idx)]
+        subroot_idx = np.random.choice(tree.n_nodes - 1)
+        if subroot_idx >= tree.root.ID: 
+            subroot_idx += 1
+        subroot = tree.nodes[subroot_idx]
 
-    # insertion above descendant destroys tree structure
-    exclude = [node.ID for node in subroot.DFS] 
-    # insertion above a sibling makes no sense since tree is not changed
-    #exclude += [sibling.ID for sibling in subroot.siblings] 
-    # parent no longer exists after pruning since tree is strictly binary
-    exclude.append(subroot.parent.ID) 
+        # insertion to a descendant destroys tree structure
+        exclude = [node.ID for node in subroot.DFS]
+        # insertion to a sibling doesn't change the tree
+        #for sibling in subroot.siblings: 
+        #    exlucde.append(sibling.ID)
+        # parent of the subtree needs to be pruned as well, since tree is strictly binary
+        exclude.append(subroot.parent.ID)
+        exclude.sort()
 
-    suitable_idx = np.delete(np.arange(tree.n_nodes), exclude)
-    target = tree.nodes[np.random.choice(suitable_idx)]
-    for sibling in subroot.siblings: 
-        ex_sibling = sibling
-    
-    return subroot, target, ex_sibling
+        #suitable_idx = np.delete(np.arange(tree.n_nodes), exclude)
+        target = tree.nodes[randint_with_exclude(tree.n_nodes, exclude)]
+        for sibling in subroot.siblings: 
+            ex_sibling = sibling
+
+        return subroot, target, ex_sibling
     
 
 def propose_swap(tree): 
@@ -90,8 +96,7 @@ def propose_swap(tree):
     exclude = [node.ID for node in subroot1.DFS]
     exclude += [node.ID for node in subroot1.ancestors]
     #exclude += [node.ID for node in subroot1.siblings]
-    suitable_idx = np.delete(np.arange(tree.n_nodes), exclude)
 
-    subroot2 = tree.nodes[np.random.choice(suitable_idx)]
+    subroot2 = tree.nodes[randint_with_exclude(tree.n_nodes, exclude)]
     
     return subroot1, subroot2

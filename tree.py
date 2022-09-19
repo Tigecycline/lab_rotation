@@ -1,6 +1,7 @@
 import numpy as np
 import graphviz
 import copy
+from random import shuffle
 
 from tree_node import *
 
@@ -55,22 +56,25 @@ class CellTree:
         self.root = self.nodes[other.root.ID]
         
     
-    def random_subtree(self, nodes_idx, internal_idx): 
+    def random_subtree(self, selected, internal_idx): 
         '''
         Create a random binary tree on selected nodes 
-        nodes_idx: indices of the selected nodes 
+        selected: indices of the selected nodes ("leaves" of the random subtree)
         internal_idx: nodes from this index are used as internal nodes of the subtree
         '''
-        remaining = nodes_idx.copy() # indices of nodes without parent
-        for i in range(len(nodes_idx) - 1): 
-            children_idx = np.random.choice(remaining, size = 2, replace = False)
+        # TBC: use a copy of selected instead of changing it directly
+        #selected = selected.copy()
+        for i in range(len(selected) - 1): 
+            children_idx = np.random.choice(selected, size = 2, replace = False)
             # TBC: clear existing children of the parent 
             self.nodes[children_idx[0]].assign_parent(self.nodes[internal_idx])
             self.nodes[children_idx[1]].assign_parent(self.nodes[internal_idx])
-            remaining.remove(children_idx[0])
-            remaining.remove(children_idx[1])
-            remaining.append(internal_idx)
+            selected.remove(children_idx[0])
+            selected.remove(children_idx[1])
+            selected.append(internal_idx)
             internal_idx += 1
+        
+        return internal_idx
     
     
     def randomize(self): 
@@ -82,26 +86,19 @@ class CellTree:
     
     
     def fit_mutation_tree(self, mutation_tree): 
-        '''
-        Works only when the mutation tree is properly sorted, i.e. children nodes are found after their parents (which should be the case if the mutation tree is generated using the default constructor)
-        '''
-        mutation_nodes = mutation_tree.nodes.copy()
-        leaves = [np.where(mutation_tree.attachments == i)[0].tolist() for i in range(self.L)] # cells attached to each mutation node
+        mrca = np.ones(mutation_tree.n_nodes, dtype = int) * -1 # most recent common ancestor of cells below a mutation node; -1 means no cell has been found below this mutation
         
         current_idx = self.n_cells
-        while mutation_nodes: 
-            node = mutation_nodes.pop() # unprocessed node with highest index, all its children should be processed already
-            n_leaves = len(leaves[node.ID])
-            if n_leaves == 0: 
-                pass
-            elif n_leaves == 1: 
-                leaves[node.parent.ID].append(leaves[node.ID][0]) # pass the child to its grandparent
-            else: 
-                self.create_random_subtree(leaves[node.ID], current_idx)
-                if not node.isroot: 
-                    subtree_root = current_idx + n_leaves - 2
-                    leaves[node.parent.ID].append(subtree_root)
-                    current_idx = subtree_root + 1 
+        for mnode in mutation_tree.root.reverse_DFS: 
+            need_adoption = [mrca[child.ID] for child in mnode.children if mrca[child.ID] >= 0]
+            need_adoption += np.where(mutation_tree.attachments == mnode.ID)[0].tolist()
+            # nothing to do if no cell found below
+            if len(need_adoption) == 1: # 1 cell found, no internal node added
+                mrca[mnode.ID] = need_adoption[0] 
+            elif len(need_adoption) > 1: # more than one cell found, add new internal node(s)
+                current_idx = self.random_subtree(need_adoption, current_idx)
+                mrca[mnode.ID] = current_idx - 1
+            
         self.root = self.nodes[-1]
     
     
@@ -184,7 +181,7 @@ class CellTree:
         subroot2.assign_parent(old_parent)
     
     
-    def to_graphviz(self, filename = None, show = False): 
+    def to_graphviz(self, filename = None, show_mutations = True): 
         dg = graphviz.Digraph(filename = filename)
         for node in self.nodes: 
             if node.isleaf: 
@@ -192,7 +189,8 @@ class CellTree:
             else: 
                 dg.node(str(node.ID), shape = 'circle', style = 'filled', color = 'gray')
             
-            if self.mutations[node.ID]: 
+            if show_mutations and self.mutations[node.ID]: 
+                # TBC: test show_mutations outside the loop to improve efficiency
                 label = 'm' + ', '.join([str(m) for m in self.mutations[node.ID]])
             else: 
                 label = ''
@@ -203,85 +201,99 @@ class CellTree:
             else: 
                 dg.edge(str(node.parent.ID), str(node.ID), label = label)
         
-        if show: 
-            dg.view()
-        
         return dg
 
 
 
 
 class MutationTree:     
-    def __init__(self, n_mut, n_cells = None, cell_tree = None): 
-        self.n_mut = n_mut
-        self.n_cells = n_cells
+    def __init__(self, cell_tree): 
+        self.fit_cell_tree(cell_tree)
         
-        if cell_tree is None: 
-            self.nodes = [TreeNode(i) for i in range(self.n_mut + 1)] # one additional node as root
-            self.root = self.nodes[-1]
-        else: 
-            self.fit_cell_tree(cell_tree)
-        
-        self.LLR = None
-        self.node_likelihoods = None
+        self.likelihoods = None
         self.attachments = None
-        
-        self.fit_likelihoods(likelihoods1, likelihoods2)
-        self.attach_cells()
     
     
     @property
     def n_nodes(self): 
-        return len(self.nodes)
+        return self.n_mut + 1
     
     
     @property
     def root(self): 
-        return self.nodes[0]
-    
-    
-    def __eq__(self, other): 
-        return self.root == other.root
+        return self.nodes[-1]
     
     
     def fit_cell_tree(self, cell_tree): 
-        self.nodes = [TreeNode(0)] + cell_tree.root.create_NED_tree()
-        self.nodes[1].assign_parent(self.root)
-        for i in range(self.N): 
-            self.nodes[i].ID = i
+        self.n_mut = cell_tree.n_mut
+        self.n_cells = cell_tree.n_cells
+        
+        self.nodes = [TreeNode(i) for i in range(self.n_nodes)]
+        
+        most_recent = np.empty(cell_tree.n_nodes, dtype = int) # index of the youngest mutation that a cell node contains
+        most_recent[cell_tree.root.ID] = self.root.ID # start with "root mutation", which represents wildtype
+        cell_tree.root.parent = cell_tree.root # temporary change so that no need to constantly check cnode.isroot
+        
+        for cnode in cell_tree.root.DFS:  # cnode for "cell node"
+            mut_idx = cell_tree.mutations[cnode.ID].copy() 
+            parent_mut = most_recent[cnode.parent.ID]
+            if mut_idx: 
+                shuffle(mut_idx)
+                self.nodes[mut_idx[0]].assign_parent(self.nodes[parent_mut])
+                for idx1, idx2 in zip(mut_idx, mut_idx[1:]): 
+                    self.nodes[idx2].assign_parent(self.nodes[idx1])
+                most_recent[cnode.ID] = mut_idx[-1]
+            else: 
+                most_recent[cnode.ID] = most_recent[cnode.parent.ID]
+                
+        cell_tree.root.parent = None # revert the temporary change
     
     
     def fit_likelihoods(self, likelihoods1, likelihoods2): 
-        self.LLR = likelihoods2 - likelihoods1 # log-likelihood ratio for single mutations
-        self.likelihoods = np.zeros()
-        self.likelihoods[:,0] = np.sum(likelihoods1, axis = 1) # root has no mutation
-        for node in self.root.DFS: 
-            self.likelihoods[:,node.ID] = self.likelihoods[:,node.parent.ID] + np.sum(sm_LLR[:,node.mutations], axis = 1)
-       
-    
-    def refresh_cell_LLR(self): 
-        self.likelihoods = np.zeros((self.L, self.N)) # likelihood of cell i attached to node j
+        LLR = likelihoods2 - likelihoods1 # log-likelihood ratio for single mutations
+        self.likelihoods = np.empty((self.n_cells, self.n_nodes)) # likelihood of cell i attached to node j
+        self.likelihoods[:,-1] = np.sum(likelihoods1, axis = 1)
+        for node in self.root.DFS_without_self: 
+            self.likelihoods[:,node.ID] = self.likelihoods[:,node.parent.ID] + LLR[:, node.ID]
     
     
     def attach_cells(self): 
         self.attachments = np.argmax(self.likelihoods, axis = 1)
         # TBC: use other data structures, e.g. a list of lists, or a boolean matrix
+    
+    
+    def prune_attach(self, subroot, target): 
+        subroot.assign_parent(target)
+    
+    
+    def node_swap(self, node1, node2): 
+        self.nodes[node1.ID], self.nodes[node2.ID] = self.nodes[node2.ID], self.nodes[node1.ID]
+        node1.ID, node2.ID = node2.ID, node1.ID
         
     
-    def to_graphviz(self, filename = None, show = False): 
-        dg = graphviz.Digraph(filename = filename, engine = 'neato')
-        for node in self.nodes: 
-            label = ', '.join(['m' + str(m) for m in node.mutations])
-            dg.node(str(node.ID), label = label, shape = 'rectangle')
-            for child in node.children:
-                dg.edge(str(node.ID), str(child.ID))
-        for i in range(self.L): 
-            cell_name = 'cell' + str(i)
-            dg.node(cell_name, label = str(i), shape = 'plaintext')
-            parent = self.nodes[self.attachments[i]]
-            dg.edge(str(parent.ID), cell_name)
-        if show: 
-            dg.view()
+    def subtree_swap(self, subroot1, subroot2): 
+        parent1 = subroot1.parent
+        parent2 = subroot2.parent
+        subroot1.assign_parent(parent2)
+        subroot2.assign_parent(parent1)
+    
+    
+    def to_graphviz(self, filename = None): 
+        dg = graphviz.Digraph(filename = filename)
+        
+        dg.node(str(self.root.ID), label = 'wt', shape = 'rectangle')
+        for node in self.nodes[:-1]: 
+            dg.node(str(node.ID), shape = 'rectangle')
+            dg.edge(str(node.parent.ID), str(node.ID))
+        
+        if self.attachments is not None: 
+            for i in range(self.n_cells): 
+                name = 'c' + str(i)
+                dg.node(name, shape = 'plaintext')
+                # TBC: use undirected edge for cell attachment
+                #dg.edge(str(self.attachments[i]), name, dir = 'none')
+                dg.edge(str(self.attachments[i]), name)
+        
         return dg
     
     

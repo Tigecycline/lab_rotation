@@ -67,34 +67,36 @@ def hill_climb(likelihoods1, likelihoods2, init_tree = None, timeout = 1024, con
 
 
 def propose_prune_insert(tree): 
-        subroot_idx = np.random.choice(tree.n_nodes - 1)
-        if subroot_idx >= tree.root.ID: 
-            subroot_idx += 1
-        subroot = tree.nodes[subroot_idx]
+    subroot_idx = np.random.choice(tree.n_nodes - 1)
+    if subroot_idx >= tree.root.ID: 
+        subroot_idx += 1
+    subroot = tree.nodes[subroot_idx]
 
-        # insertion to a descendant destroys tree structure
-        exclude = [node.ID for node in subroot.DFS]
-        # insertion to a sibling doesn't change the tree
-        #for sibling in subroot.siblings: 
-        #    exlucde.append(sibling.ID)
-        # parent of the subtree needs to be pruned as well, since tree is strictly binary
-        exclude.append(subroot.parent.ID)
-        exclude.sort()
+    # insertion to a descendant destroys tree structure
+    exclude = [node.ID for node in subroot.DFS]
+    # insertion to a sibling doesn't change the tree
+    #for sibling in subroot.siblings: 
+    #    exlucde.append(sibling.ID)
+    # parent of the subtree needs to be pruned as well, since tree is strictly binary
+    exclude.append(subroot.parent.ID)
 
-        #suitable_idx = np.delete(np.arange(tree.n_nodes), exclude)
-        target = tree.nodes[randint_with_exclude(tree.n_nodes, exclude)]
-        for sibling in subroot.siblings: 
-            ex_sibling = sibling
+    #suitable_idx = np.delete(np.arange(tree.n_nodes), exclude)
+    target = tree.nodes[randint_with_exclude(tree.n_nodes, exclude)]
+    for sibling in subroot.siblings: 
+        ex_sibling = sibling
 
-        return subroot, target, ex_sibling
+    return subroot, target, ex_sibling
     
 
 def propose_swap(tree): 
-    non_root_idx = np.delete(np.arange(tree.n_nodes), tree.root.ID) 
-    subroot1 = tree.nodes[np.random.choice(non_root_idx)]
+    subroot1_idx = np.random.choice(tree.n_nodes - 1)
+    if subroot1_idx >= tree.root.ID: 
+        subroot1_idx += 1
+    subroot1 = tree.nodes[subroot1_idx]
 
     exclude = [node.ID for node in subroot1.DFS]
     exclude += [node.ID for node in subroot1.ancestors]
+    #print(exclude)
     #exclude += [node.ID for node in subroot1.siblings]
 
     subroot2 = tree.nodes[randint_with_exclude(tree.n_nodes, exclude)]

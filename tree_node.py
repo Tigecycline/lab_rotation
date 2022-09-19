@@ -27,11 +27,6 @@ class TreeNode:
     
     
     @property
-    def grand_parent(self): 
-        return self.parent.parent
-    
-    
-    @property
     def ancestors(self): 
         ''' traverse all ancestors from most to least recent '''
         if self.parent is not None: 
@@ -61,6 +56,13 @@ class TreeNode:
         for child in self.children: 
             yield from child.reverse_DFS
         yield self
+    
+    
+    @property
+    def DFS_without_self(self): 
+        ''' traverse subtree in DFS order, but ignore the root of the subtree '''
+        for child in self.children: 
+            yield from child.DFS
     
     
     def __str__(self): 
@@ -133,39 +135,6 @@ class TreeNode:
         #print('*****************************************************')
         #print('[TreeNode.remove_child] WARNING: Child doesn\'t exist.')
         #print('*****************************************************')
-    
-    
-    def get_nonempty_descendants(self, container = None): 
-        ''' 
-        A "nonemtpy descendant (NED)" is a descendant node of self such that 
-        (1) the NED contains at least one mutation and
-        (2) no mutation is contained in nodes between self and the NED
-        '''
-        if container is None: 
-            container = []
-        
-        for child in self.children: 
-            if child.isempty: 
-                child.get_nonempty_descendants(container)
-            else: 
-                container.append(child)
-        
-        return container
-    
-    
-    def create_NED_tree(self, container = None, parent = None): 
-        new_node = self.copy()
-        
-        if container is None: 
-            container = [new_node]
-        else: 
-            container.append(new_node)
-            new_node.assign_parent(parent)
-        
-        for ned in self.get_nonempty_descendants(): 
-            ned.create_NED_tree(container, new_node)
-        
-        return container
     
     
     def copy(self, name = None, parent = None, children = None): 

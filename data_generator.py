@@ -29,7 +29,7 @@ class DataGenerator:
         else: 
             self.tree = cell_tree
         
-        if gt1 is None or gt2 is None: 
+        if gt1 is None and gt2 is None: 
             self.random_mutations()
         else: 
             self.gt1 = gt1

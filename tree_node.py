@@ -117,7 +117,8 @@ class TreeNode:
     def assign_parent(self, new_parent): 
         old_parent = self.parent
         self.parent = new_parent
-        insort(new_parent.children, self) # keep children sorted (by ID)
+        if new_parent is not None: 
+            insort(new_parent.children, self) # keep children sorted (by ID)
         if old_parent is not None: 
             old_parent.remove_child(self)
     

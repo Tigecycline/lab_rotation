@@ -11,7 +11,7 @@ class DataGenerator:
     mutation_types = ['RH', 'AH', 'HR', 'HA']
     
     
-    def __init__(self, n_cells = 8, n_mut = 16, priors = np.ones(4) / 4, f = 0.95, omega = 100, omega_h = 50, coverage_sampler = None, cell_tree = None, gt1 = None, gt2 = None, forbid_root_mut = False):
+    def __init__(self, n_cells = 8, n_mut = 16, priors = np.ones(4) / 4, f = 0.95, omega = 100, omega_h = 50, coverage_sampler = None, cell_tree = None, gt1 = None, gt2 = None):
         self.priors = priors
         self.alpha = f * omega
         self.beta = omega - self.alpha
@@ -20,8 +20,6 @@ class DataGenerator:
             self.coverage_sampler = lambda : poisson.rvs(mu = 8)
         else: 
             self.coverage_sampler = coverage_sampler 
-        
-        self.forbid_root_mut = forbid_root_mut
         
         if cell_tree is None: 
             self.random_tree(n_cells, n_mut)
@@ -63,8 +61,6 @@ class DataGenerator:
     def random_mut_locations(self): 
         self.tree.clear_mutations()
         candidates = np.arange(self.tree.n_nodes)
-        if self.forbid_root_mut: 
-            candidates = np.delete(candidates, self.tree.root.ID)
         mut_locations = np.random.choice(candidates, size = self.n_mut, replace = True)
         for i in range(self.n_mut): 
             self.tree.mutations[mut_locations[i]].append(i)
@@ -104,13 +100,3 @@ class DataGenerator:
         
         return ref, alt
         
-
-        
-
-
-'''
-def coverage_sampler(): 
-    return int(np.random.choice(coverages))
-dg = DataGenerator(coverage_sampler = coverage_sampler)
-ref_test, alt_test = dg.generate_reads(mutations = ['AH' for i in range(3)])
-'''

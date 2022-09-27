@@ -14,6 +14,7 @@ class CellTree:
     def __init__(self, n_cells = 1, n_mut = None, randomize = True): 
         self.n_cells = n_cells 
         self.n_mut = n_mut
+        self.mutation_tree = None
         self.nodes = [TreeNode(i) for i in range(2 * self.n_cells - 1)]
         self.root = None
         
@@ -98,8 +99,13 @@ class CellTree:
             elif len(need_adoption) > 1: # more than one cell found, add new internal node(s)
                 current_idx = self.random_subtree(need_adoption, current_idx)
                 mrca[mnode.ID] = current_idx - 1
-            
+        
         self.root = self.nodes[-1]
+        # N.B. For most of the cell nodes, their old parent (before fitting to a mutation tree)
+        # is overwritten by the assign_parent function, but the new root is not. 
+        # This is not a problem when new root is the same as the original root, but 
+        # otherwise, the parent of the new root is not overwritten and needs to be set to None
+        self.root.assign_parent(None)
     
     
     def fit_likelihoods(self, likelihoods1, likelihoods2, reversible = None): 
@@ -175,19 +181,14 @@ class CellTree:
         anchor = subroot.parent
         
         for sibling in subroot.siblings: 
-            if anchor.isroot: # if pruned at root, sibling becomes new root
-                anchor.remove_child(sibling)
-                sibling.parent = None
+            sibling.assign_parent(anchor.parent)
+            if sibling.isroot: # if pruned at root, sibling becomes new root
                 self.root = sibling 
-            else: 
-                sibling.assign_parent(anchor.parent)
         
-        if target.isroot: # if inserted to original root, anchor becomes new root
-            anchor.parent.remove_child(anchor)
-            anchor.parent = None
+        anchor.assign_parent(target.parent) 
+        if anchor.isroot: # if inserted to original root, anchor becomes new root
             self.root = anchor
-        else: 
-            anchor.assign_parent(target.parent) 
+            
         target.assign_parent(anchor)
     
     
@@ -210,7 +211,7 @@ class CellTree:
         subroot2.assign_parent(old_parent)
     
     
-    def hill_climb(self, timeout = 1024, convergence = 64, weights = [0.5, 0.5]): 
+    def hill_climb(self, weights = [0.5, 0.5], convergence = 64, timeout = 1024): 
         n_proposed = 0 # number of failed moves
         n_steps = 0
         likelihood_history = [self.likelihood]
@@ -234,7 +235,7 @@ class CellTree:
                     n_proposed = 0
                 else: # if likelihood not better, revert the move
                     self.prune_insert(subroot, ex_sibling) 
-                    n_proposed += 1 
+                    n_proposed += 1
             
             else: # move_type == 1, swap two subtrees
                 subroot1, subroot2 = self.propose_swap()
@@ -292,17 +293,22 @@ class CellTree:
 
 
 
-class MutationTree:     
-    def __init__(self, cell_tree): 
-        self.fit_cell_tree(cell_tree)
+class MutationTree: 
+    def __init__(self, cell_tree = None): 
+        if cell_tree is None: 
+            self.cell_tree = None
+            self.nodes = None
+            self.likelihoods = None
+            self.LLR = None
+        else: 
+            self.link_with(cell_tree)
         
-        self.likelihoods = None
         self.attachments = None
     
     
     @property
     def n_nodes(self): 
-        return self.n_mut + 1
+        return len(self.nodes)
     
     
     @property
@@ -311,16 +317,32 @@ class MutationTree:
     
     
     @property
-    def likelihood(self): 
+    def joint_likelihood(self): 
         return np.sum([self.likelihoods[i, self.attachments[i]] for i in range(self.n_cells)])
     
     
-    def fit_cell_tree(self, cell_tree): 
-        self.n_mut = cell_tree.n_mut
-        self.n_cells = cell_tree.n_cells
+    def link_cell_tree(self, cell_tree): 
+        self.cell_tree = cell_tree
+        self.link_LLR(cell_tree.LLR)
+    
+    
+    def link_LLR(self, LLR): 
+        self.n_cells = LLR.shape[0]
+        self.n_mut = LLR.shape[1]
+        self.LLR = LLR
         
-        self.nodes = [TreeNode(i) for i in range(self.n_nodes)]
+        self.nodes = [TreeNode(i) for i in range(self.n_mut + 1)]
+        self.likelihoods = np.empty((self.n_cells, self.n_nodes)) # likelihood of cell i attached to node j
+        self.likelihoods[:,-1] = np.sum(likelihoods1, axis = 1)
         
+    
+    def random_structure(self): 
+        pass # to be implemented
+    
+    
+    def adapt_structure(self, cell_tree = None): 
+        if cell_tree is None: 
+            cell_tree = self.cell_tree # use the linked cell tree
         mrm = np.empty(cell_tree.n_nodes, dtype = int) # mrm for "most recent mutation"
         mrm[cell_tree.root.ID] = self.root.ID # start with "root mutation", which represents wildtype
         cell_tree.root.parent = cell_tree.root # temporary change so that no need to constantly check cnode.isroot
@@ -340,14 +362,6 @@ class MutationTree:
         cell_tree.root.parent = None # revert the temporary change
     
     
-    def fit_likelihoods(self, likelihoods1, likelihoods2): 
-        self.n_cells = likelihoods1.shape[0]
-        self.n_mut = likelihoods1.shape[1]
-        self.LLR = likelihoods2 - likelihoods1 # log-likelihood ratio for single mutations
-        self.likelihoods = np.empty((self.n_cells, self.n_nodes)) # likelihood of cell i attached to node j
-        self.likelihoods[:,-1] = np.sum(likelihoods1, axis = 1)
-        
-    
     def refresh_likelihoods(self): 
         for node in self.root.DFS_without_self: 
             self.likelihoods[:,node.ID] = self.likelihoods[:,node.parent.ID] + self.LLR[:, node.ID]
@@ -359,8 +373,6 @@ class MutationTree:
     
     
     def fit(self, likelihoods1 = None, likelihoods2 = None): 
-        if likelihoods1 is not None and likelihoods2 is not None: 
-            self.fit_likelihoods(likelihoods1, likelihoods2)
         self.refresh_likelihoods()
         self.attach_cells()
     
@@ -420,7 +432,7 @@ class MutationTree:
     #    subroot2.assign_parent(parent1)
     
     
-    def hill_climb(self, timeout = 1024, convergence = 64, weights = [0.5, 0.5]): 
+    def hill_climb(self, weights = [0.5, 0.5], convergence = 64, timeout = 1024): 
         n_proposed = 0 # number of failed moves
         n_steps = 0
         likelihood_history = [self.likelihood]

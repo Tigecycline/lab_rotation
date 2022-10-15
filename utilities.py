@@ -10,14 +10,13 @@ def lognormalize(array):
     return array - logsumexp(array)
 
 
-def randint_with_exclude(n, exclude, size = None): 
+def randint_with_exclude(n, exclude): 
     '''
     pick a random integer from [0, n-1] but exclude some integers
-    exclude: list of integers to be exclude, should be (strict) subset of [0, n-1]
+    exclude: integer or list/array of integers to be excluded
     '''
-    # TBC: handle the case when len(exclude) >= n
     exclude.sort()
-    rnd = np.random.randint(n - len(exclude), size = size)
+    rnd = np.random.randint(n - len(exclude))
     for i in exclude: 
         if rnd >= i: 
             rnd += 1

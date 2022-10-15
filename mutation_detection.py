@@ -26,7 +26,7 @@ def read_likelihood(n_ref, n_alt, genotype, log_scale = True):
         return betabinom.pmf(n_ref, n_ref + n_alt, alpha, beta)
 
     
-def get_likelihoods(ref, alt, gt1, gt2):
+def cell_locus_likelihoods(ref, alt, gt1, gt2):
     '''
     For each cell and locus, calculate likelihood that the cell is wildtype / mutated at that locus 
     likelihoods1[i,j]: likelihood of cell i not mutated at locus j

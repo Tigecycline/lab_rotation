@@ -58,13 +58,6 @@ class TreeNode:
         yield self
     
     
-    @property
-    def DFS_without_self(self): 
-        ''' traverse subtree in DFS order, but ignore the root of the subtree '''
-        for child in self.children: 
-            yield from child.DFS
-    
-    
     def __str__(self): 
         result = ''
         result += '****** node "' + str(self.ID) + '" ******\n'
@@ -97,11 +90,11 @@ class TreeNode:
     #    return True
     
     
-    def sort(self): 
-        ''' Sorts the children (according to ID) of self and all descendants '''
-        self.children.sort() 
-        for child in self.children: 
-            child.sort() 
+    #def sort(self): 
+    #    ''' Sorts the children (according to ID) of self and all descendants '''
+    #    self.children.sort() 
+    #    for child in self.children: 
+    #        child.sort() 
     
     
     def descends_from(self, other): 
@@ -138,8 +131,8 @@ class TreeNode:
         #print('*****************************************************')
     
     
-    def copy(self, name = None, parent = None, children = None): 
-        new_node = TreeNode(name, parent, children)
-        new_node.mutations = self.mutations
-        return new_node
+    #def copy(self, name = None, parent = None, children = None): 
+    #    new_node = TreeNode(name, parent, children)
+    #    new_node.mutations = self.mutations
+    #    return new_node
 

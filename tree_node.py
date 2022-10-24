@@ -58,6 +58,14 @@ class TreeNode:
         yield self
     
     
+    @property
+    def leaves(self): 
+        ''' traverse all leaves in the subtree '''
+        for node in self.DFS: 
+            if node.isleaf: 
+                yield node
+    
+    
     def __str__(self): 
         result = ''
         result += '****** node "' + str(self.ID) + '" ******\n'

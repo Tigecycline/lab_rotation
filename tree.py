@@ -3,7 +3,7 @@ import graphviz
 import copy
 from random import shuffle
 
-from tree_node import *
+from tree_node import TreeNode
 from utilities import randint_with_exclude
 
 
@@ -34,8 +34,30 @@ class CellTree:
         result = [[] for i in range(self.n_nodes)]
         if self.attachments is not None: 
             for j in range(self.n_mut): 
-                result[self.attachments[j]].append(j)
+                if self.attachments[j] >= 0: # negative values mean "outside of the tree"
+                    result[self.attachments[j]].append(j)
         return result
+    
+    
+    @property 
+    def dist_matrix(self): 
+        # TBC: find more efficient algorithm 
+        result = - np.ones((self.n_cells, self.n_nodes), dtype = int)
+        np.fill_diagonal(result, 0)
+        for node in self.root.reverse_DFS: 
+            if node.isleaf: 
+                continue
+            child1, child2 = node.children
+            for leaf1 in child1.leaves: 
+                for leaf2 in child2.leaves: 
+                    result[leaf1.ID, node.ID] = result[leaf1.ID, child1.ID] + 1
+                    result[leaf2.ID, node.ID] = result[leaf2.ID, child2.ID] + 1
+                    dist = result[leaf1.ID, child1.ID] + result[leaf2.ID, child2.ID] + 2
+                    if leaf1.ID < leaf2.ID: 
+                        result[leaf1.ID, leaf2.ID] = dist
+                    else: 
+                        result[leaf2.ID, leaf1.ID] = dist
+        return result[:,:self.n_cells]
     
     
     def copy(self): 
@@ -180,63 +202,6 @@ class CellTree:
         self.last_move = None
     
     
-    def hill_climb(self, weights = [0.5, 0.5], convergence = 64, timeout = 1024): 
-        n_proposed = 0 # number of failed moves
-        n_steps = 0
-        likelihood_history = [self.likelihood]
-        best_likelihood = likelihood_history[0]
-
-        while n_steps < timeout and n_proposed < convergence: 
-            old_dg = self.to_graphviz()
-            move_type = np.random.choice(2, p = weights)
-            
-            if move_type == 0: # prune a subtree & insert elsewhere 
-                subroot, target, ex_sibling = self.propose_prune_insert()
-                if target is ex_sibling: 
-                    continue # inserting above sibling results in same tree 
-                n_steps += 1
-                self.prune_insert(subroot, target)
-                self.fit()
-                new_likelihood = self.likelihood
-                if new_likelihood > best_likelihood: 
-                    best_likelihood = new_likelihood
-                    likelihood_history.append(best_likelihood)
-                    n_proposed = 0
-                else: # if likelihood not better, revert the move
-                    self.prune_insert(subroot, ex_sibling) 
-                    n_proposed += 1
-            
-            else: # move_type == 1, swap two subtrees
-                subroot1, subroot2 = self.propose_swap()
-                if subroot1 in subroot2.siblings:
-                    continue # swapping with sibling results in same tree 
-                n_steps += 1
-                self.subtree_swap(subroot1, subroot2)
-                self.fit()
-                new_likelihood = self.likelihood
-                if new_likelihood > best_likelihood: 
-                    best_likelihood = new_likelihood
-                    likelihood_history.append(best_likelihood)
-                    n_proposed = 0
-                else: # if likelihood not better, revert the move
-                    self.subtree_swap(subroot1, subroot2) 
-                    n_proposed += 1
-        
-        # N.B. When a proposal fails, only the tree structure is reverted
-        # The LLR and mutation attachments are still that of the proposed tree
-        # This doesn't affect the hill-climbing since LLR and mutation attachements 
-        # are re-calculated for each new proposal 
-        # However, a re-calculation is necessary after hill-climbing is over
-        self.fit()
-        
-        if n_steps == timeout: 
-            print('[Cell Tree] Timeout reached.')
-        else:
-            print('[Cell Tree] Converged after %d steps' % n_steps)
-
-        return likelihood_history
-    
-    
     def to_graphviz(self, filename = None): 
         dg = graphviz.Digraph(filename = filename)
         
@@ -307,6 +272,8 @@ class MutationTree:
     
     
     def fit_structure(self, cell_tree): 
+        for node in self.nodes: 
+            node.assign_parent(None) # clear the current structure
         mrm = np.empty(cell_tree.n_nodes, dtype = int) # mrm for "most recent mutation"
         mrm[cell_tree.root.ID] = self.root.ID # start with "root mutation", which represents wildtype
         mutations = cell_tree.mutations
@@ -323,8 +290,13 @@ class MutationTree:
                 mrm[cnode.ID] = mut_idx[-1]
             else: 
                 mrm[cnode.ID] = mrm[cnode.parent.ID]
-                
+        
         cell_tree.root.parent = None # revert the temporary change
+        
+        for node in self.nodes[:-1]:
+            # mutations that are not assigned in the cell tree (i.e. CellTree.attachment[j] out of range)
+            if node.parent is None: 
+                node.assign_parent(self.root) 
     
     
     def fit(self, likelihoods1 = None, likelihoods2 = None): 
@@ -416,61 +388,10 @@ class MutationTree:
     #    subroot2.assign_parent(parent1)
     
     
-    def hill_climb(self, weights = [0.5, 0.5], convergence = 64, timeout = 1024): 
-        n_proposed = 0 # number of failed moves
-        n_steps = 0
-        likelihood_history = [self.likelihood]
-        best_likelihood = likelihood_history[0]
-        
-        while n_steps < timeout and n_proposed < convergence: 
-            n_steps += 1
-            move_type = np.random.choice(2, p = weights)
-            
-            if move_type == 0: # prune a subtree & attach to another node 
-                subrootID, targetID = self.ct.propose_prune_attach()
-                self.ct.prune_attach(subroot, target)
-                self.fit()
-                new_likelihood = self.likelihood
-                if new_likelihood > best_likelihood: 
-                    best_likelihood = new_likelihood
-                    likelihood_history.append(best_likelihood)
-                    n_proposed = 0
-                else: # if likelihood not better, revert the move
-                    self.prune_attach(subroot, ex_parent) 
-                    n_proposed += 1 
-                    
-            else: # move_type == 1, swap two nodes
-                node1, node2 = self.propose_node_swap()
-                self.node_swap(node1, node2)
-                self.fit()
-                new_likelihood = self.likelihood
-                if new_likelihood > best_likelihood: 
-                    best_likelihood = new_likelihood
-                    likelihood_history.append(best_likelihood)
-                    n_proposed = 0
-                else: # if likelihood not better, revert the move
-                    self.node_swap(node1, node2) 
-                    n_proposed += 1
-        
-        # N.B. When a proposal fails, only the tree structure is reverted
-        # The likelihoods and cell attachments are still that of the proposed tree
-        # This doesn't affect the hill-climbing since likelihoods and cell attachements 
-        # are re-calculated for each new proposal 
-        # However, a re-calculation is necessary after hill-climbing is over
-        self.fit()
-        
-        if n_steps == timeout: 
-            print('[Mutation Tree] Timeout reached.')
-        else:
-            print('[Mutation Tree] Converged after %d steps' % n_steps)
-
-        return likelihood_history
-    
-    
     def to_graphviz(self, filename = None): 
         dg = graphviz.Digraph(filename = filename)
         
-        dg.node(str(self.root.ID), label = 'wt', shape = 'rectangle')
+        dg.node(str(self.root.ID), label = 'root', shape = 'rectangle')
         for node in self.nodes[:-1]: 
             dg.node(str(node.ID), shape = 'rectangle', style = 'filled', color = 'gray')
             dg.edge(str(node.parent.ID), str(node.ID))

@@ -6,6 +6,7 @@ from utilities import *
 
 
 
+
 def corr_likelihood(ref1, alt1, ref2, alt2, homo1, homo2): 
     N = ref1.size
     

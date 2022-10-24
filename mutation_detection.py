@@ -26,11 +26,11 @@ def read_likelihood(n_ref, n_alt, genotype, log_scale = True):
         return betabinom.pmf(n_ref, n_ref + n_alt, alpha, beta)
 
     
-def cell_locus_likelihoods(ref, alt, gt1, gt2):
+def cell_locus_likelihoods(ref, alt, gt1, gt2, correlated = None):
     '''
-    For each cell and locus, calculate likelihood that the cell is wildtype / mutated at that locus 
-    likelihoods1[i,j]: likelihood of cell i not mutated at locus j
-    likelihoods2[i,j]: likelihood of cell i mutated at locus j
+    For each cell and locus, calculate likelihood that the cell is gt1 / gt2 mutated at that locus 
+    likelihoods1[i,j]: likelihood of cell i having gt1 at locus j
+    likelihoods2[i,j]: likelihood of cell i having gt2 at locus j
     '''
     n_cells = ref.shape[0]
     n_mut = ref.shape[1]
@@ -167,13 +167,32 @@ def get_posteriors(ref, alt, genotype_freq = {'R': 1/3, 'H': 1/3, 'A': 1/3}, mut
     
     
     
+
     
+def test_thread_numbers(ref, alt, max_n_threads):  
+    time_costs = np.empty(max_n_threads)
+    for n in range(1,max_n_threads+1): 
+        start_time = time.time()
+        get_posteriors(ref, alt, n_threads = n)
+        time_costs[n-1] = time.time() - start_time
+
+    return time_costs
     
 if __name__ == '__main__': 
     import pandas as pd
-    
     ref = pd.read_csv('./Data/glioblastoma_BT_S2/ref.csv', index_col = 0).to_numpy(dtype = float)
     alt = pd.read_csv('./Data/glioblastoma_BT_S2/alt.csv', index_col = 0).to_numpy(dtype = float)
     
-    print(get_posteriors(ref[:20], alt[:20], n_threads = 6))
+    n_loci = 20
+    time_costs = test_thread_numbers(ref[:n_loci,:], alt[:n_loci,:], 12)
+
+    plt.figure(figsize = (8,6))
+    plt.plot(np.array(range(1, 13)), time_costs)
+    plt.xlabel('number of threads')
+    plt.ylabel('runtime (s)')
+    plt.grid()
+    plt.show()
+
+    
+    
     

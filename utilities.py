@@ -1,3 +1,4 @@
+from random import randrange
 from scipy.special import loggamma, logsumexp
 import numpy as np
 
@@ -13,13 +14,21 @@ def lognormalize(array):
 def randint_with_exclude(n, exclude): 
     '''
     pick a random integer from [0, n-1] but exclude some integers
-    exclude: integer or list/array of integers to be excluded
+    exclude: list/numpy.array of integers to be excluded
     '''
     exclude.sort()
-    rnd = np.random.randint(n - len(exclude))
-    for i in exclude: 
-        if rnd >= i: 
+    rnd = randrange(0, n - len(exclude))
+    for ex in exclude: 
+        if rnd >= ex: 
             rnd += 1
-        else: 
+        else:
             break
     return rnd
+
+
+def path_len_dist(ct1, ct2): 
+    ''' 
+    Manhatten distance between the distance matrices of two cells trees 
+    The distance matrix does not include internal nodes
+    ''' 
+    return np.sum(np.abs(ct1.dist_matrix - ct2.dist_matrix))

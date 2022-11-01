@@ -1,16 +1,14 @@
 from tree import *
-from scipy.spatial.distance import hamming
+from mutation_detection import *
+from LOH_detection import *
 
 
-def shortest_path_dist(ct1, ct2): 
-    return hamming(ct1.dist_matrix, ct2.dist_matrix)
 
 
 class TreeOptimizer: 
-    def __init__(self, convergence_factor = 5, timeout_factor = 20, space = 'b'): 
+    def __init__(self, convergence_factor = 5, timeout_factor = 20): 
         self.convergence_factor = convergence_factor
-        self.timeout_factor = timeout_factor
-        self.space = space # c = cell tree space; m = mutation tree space; b = both        
+        self.timeout_factor = timeout_factor     
     
     
     def fit(self, likelihoods1, likelihoods2, sig_dig = 10, reversible = False): 
@@ -23,6 +21,10 @@ class TreeOptimizer:
         
         self.likelihoods1, self.likelihoods2 = likelihoods1.copy(), likelihoods2.copy()
         self._decimals = sig_dig - int(np.log10(np.abs(np.sum(likelihoods1)))) # round tree likelihoods to this precision
+        # Need to round because numpy.sum can give slightly different results when summing a matrix along different axis
+        # See the "Notes" part in documentation: https://numpy.org/doc/stable/reference/generated/numpy.sum.html
+        # If not rounded, the likelihood might increase when converting between the two tree spaces
+        # Sometimes this traps the optimization in an infinite search
         
         self.f1t2 = [True] * self.n_mut # direction of mutation j, True if from gt1 to gt2, False otherwise
         
@@ -30,7 +32,7 @@ class TreeOptimizer:
         self.ct.randomize()
         self.mt = MutationTree(self.n_cells, self.n_mut)
         
-        # Todo: come up with better attribute names (or better implementation)
+        # TBC: come up with better attribute names (or better implementation)
         self.ct_LLR = np.zeros((self.ct.n_nodes, self.n_mut)) # [i,j] log-likelihood ratio of mutation j attached to edge above cell i in the cell tree
         self.ct_LLR[:self.n_cells,:] = self.likelihoods2 - self.likelihoods1 
         self.ct_L1 = np.sum(self.likelihoods1, axis = 0) # [j] log-likelihood that all cells have gt1 at locus j
@@ -64,6 +66,21 @@ class TreeOptimizer:
         ''' joint likelihood of the mutation tree with attached cells '''
         result = sum([self.mt_L[i, self.mt.attachments[i]] for i in range(self.n_cells)])
         return round(result, self._decimals)
+    
+    
+    @property
+    def ct_mean_likelihood(self): 
+        return self.ct_joint / self.likelihoods1.size
+    
+    
+    @property
+    def mt_mean_likelihood(self): 
+        return self.mt_joint / self.likelihoods1.size
+    
+    
+    @property
+    def mean_history(self): 
+        return self.likelihood_history / self.likelihoods1.size
     
     
     def flip_direction(self, j): 
@@ -204,41 +221,125 @@ class TreeOptimizer:
         return likelihood_history
     
     
-    def optimize(self, start_space = 0, print_space_result = True, strategy = 'hill climb'): 
+    def optimize(self, print_result = True, strategy = 'hill climb', spaces = None): 
+        '''
+        spaces: spaces that will be searched and the order of the search
+            'c' = cell tree space, 'm' = mutation tree space
+            default is ['c','m'], i.e. start with cell tree and search both spaces
+            more spaces can be added in the future
+        '''
         ct_convergence = self.n_cells * self.convergence_factor
         mt_convergence = self.n_mut * self.convergence_factor * 2
         ct_timeout = ct_convergence * self.timeout_factor
         mt_timeout = mt_convergence * self.timeout_factor
         
-        n_spaces = 2
+        if spaces is None: 
+            spaces = ['c','m']
+        n_spaces = len(spaces)
         converged = [False] * n_spaces
         
-        current_space = start_space 
-        likelihood_history = []
-        space_history = []
+        self.likelihood_history = [np.inf]
+        self.space_history = []
+        space_idx = 0
         
         while not all(converged): 
             # 0 = cell tree space, 1 = mutation tree space
-            if current_space == 0: 
-                new_history = self.ct_hill_climb(convergence = ct_convergence, timeout = ct_timeout, print_result = print_space_result)
+            current_space = spaces[space_idx]
+            if current_space == 'c': 
+                new_history = self.ct_hill_climb(convergence = ct_convergence, timeout = ct_timeout, print_result = print_result)
                 self.mt.fit_structure(self.ct)
                 self.mt_L[:,self.mt.root.ID] = np.sum(self.likelihoods1, axis = 1)
                 self.update_mt()
 
-            elif current_space == 1: 
-                new_history = self.mt_hill_climb(convergence = mt_convergence, timeout = mt_timeout, print_result = print_space_result)
+            elif current_space == 'm': 
+                new_history = self.mt_hill_climb(convergence = mt_convergence, timeout = mt_timeout, print_result = print_result)
                 self.ct.fit_structure(self.mt)
                 self.update_ct()
-            
-            if len(new_history) == 1: 
-                converged[current_space] = True
-            else: 
-                converged[current_space] = False
                 
-            likelihood_history += new_history
-            space_history += [current_space] * len(new_history)
+            else: 
+                print('[TreeOptimizer.optimize] ERROR: invalid space name')
+                return
+            
+            if new_history[-1] == self.likelihood_history[-1]: 
+                converged[space_idx] = True
+            else: 
+                converged[space_idx] = False
+            
+            self.likelihood_history += new_history
+            self.space_history += [current_space] * len(new_history)
 
-            # swap to the other space
-            current_space = (current_space + 1) % n_spaces
+            # swap to the next space
+            space_idx = (space_idx + 1) % n_spaces
 
-        return likelihood_history, space_history
+    
+    
+    
+def read_data(fn_ref, fn_alt, chromosome = None, row_is_cell = False): 
+    df_ref = pd.read_csv(fn_ref, index_col = 0)
+    df_alt = pd.read_csv(fn_alt, index_col = 0)
+    
+    df_ref['chromosome'] = [locus.split('_')[0] for locus in df_ref.index]
+    df_ref['locus'] = [locus.split('_')[1] for locus in df_ref.index]
+    df_ref = df_ref.set_index(['chromosome', 'locus']) # use multi-index
+
+    df_alt['chromosome'] = [locus.split('_')[0] for locus in df_alt.index]
+    df_alt['locus'] = [locus.split('_')[1] for locus in df_alt.index]
+    df_alt = df_alt.set_index(['chromosome', 'locus'])
+    
+    if chromosome is not None: 
+        df_ref = df_ref.loc[chromosome,:]
+        df_alt = df_alt.loc[chromosome,:]
+    
+    ref = df_ref.to_numpy(dtype = float)
+    alt = df_alt.to_numpy(dtype = float)
+    #coverage = ref.flatten() + alt.flatten()
+    
+    if row_is_cell: 
+        return ref, alt
+    else: 
+        return ref.T, alt.T
+
+    
+def filter_mutations(ref, alt, consider_LOH = False, threshold = None): 
+    '''
+    Infer genotypes from matrices of reference and alternative alleles
+    Then filter ref and alt according to the posteriors
+    '''
+    assert(ref.shape == alt.shape)
+    n_cells, n_loci = ref.shape
+    
+    #print('Calculating mutation type posteriors...')
+    posteriors = mut_type_posteriors(ref, alt, n_threads = 6)
+    
+    if threshold is None: 
+        # if no threshold provided, pick highest posterior
+        selected = np.where(np.argmax(posteriors, axis = 1) >= 3)[0]
+    else: 
+        # choose loci at which the sum of the two mutated posteriors > threshold 
+        selected = np.where(np.sum(posteriors[:,3:], axis = 1) > threshold)[0]
+    
+    # Todo: apply LOH detection
+    
+    ref_filtered, alt_filtered = ref[:,selected], alt[:,selected]
+    mut_type = np.argmax(posteriors[selected, 3:], axis = 1) # 0 means HR, 1 means HA
+    gt1 = np.array(['H'] * len(selected))
+    gt2 = np.choose(mut_type, choices = ['R', 'A'])
+    
+    return ref_filtered, alt_filtered, gt1, gt2
+
+
+#def infer_tree(likelihoods1, likelihoods2, reversible = True): 
+#    optz = TreeOptimizer()
+#    optz.fit(likelihoods2, likelihoods1, reversible = reversible)
+#    optz.optimize()
+#    
+#    return optz
+
+
+def mean_likelihood(ct, likelihoods1, likelihoods2): 
+    optz = TreeOptimizer()
+    optz.fit(likelihoods2, likelihoods1, reversible = True)
+    optz.ct = ct
+    optz.ct.n_mut = optz.n_mut
+    optz.update_ct()
+    return optz.ct_mean_likelihood

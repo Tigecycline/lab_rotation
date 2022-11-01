@@ -28,7 +28,11 @@ def randint_with_exclude(n, exclude):
 
 def path_len_dist(ct1, ct2): 
     ''' 
-    Manhatten distance between the distance matrices of two cells trees 
-    The distance matrix does not include internal nodes
+    MSE between the distance matrices of two cells trees 
+    NB The distance matrix does not include internal nodes
+    NB2 The denominator is the number of 2-leaf combinations, not the matrix size
     ''' 
-    return np.sum(np.abs(ct1.dist_matrix - ct2.dist_matrix))
+    dist_mat1 = ct1.dist_matrix
+    dist_mat2 = ct2.dist_matrix
+    denominator = (dist_mat1.size - dist_mat1.shape[0]) / 2
+    return np.sum((dist_mat1 - dist_mat2)**2) / denominator

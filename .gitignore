@@ -1,3 +1,4 @@
 .ipynb_checkpoints/*
+figures/*
 __pycache__/*
 test.py

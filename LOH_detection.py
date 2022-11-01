@@ -15,10 +15,10 @@ def corr_likelihood(ref1, alt1, ref2, alt2, homo1, homo2):
     
     with np.errstate(divide='ignore'): # CONSIDER: other methods to deal with log 0 problem? 
         for n in range(N): 
-            likelihoods[n+1, 0] = likelihoods[n, 0] + read_likelihood(ref1[n], alt1[n], 'H') + read_likelihood(ref1[n], alt1[n], 'H')
+            likelihoods[n+1, 0] = likelihoods[n, 0] + single_read_likelihood(ref1[n], alt1[n], 'H') + single_read_likelihood(ref1[n], alt1[n], 'H')
             k_over_n = np.array([k/(n+1) for k in range(1,n+2)])
-            l1 = np.log(1 - k_over_n) + read_likelihood(ref1[n], alt1[n], 'H') + read_likelihood(ref2[n], alt2[n], 'H') + likelihoods[n, 1:n+2]
-            l2 = np.log(k_over_n) + read_likelihood(ref1[n], alt1[n], homo1) + read_likelihood(ref2[n], alt2[n], homo2) + likelihoods[n, 0:n+1]
+            l1 = np.log(1 - k_over_n) + single_read_likelihood(ref1[n], alt1[n], 'H') + single_read_likelihood(ref2[n], alt2[n], 'H') + likelihoods[n, 1:n+2]
+            l2 = np.log(k_over_n) + single_read_likelihood(ref1[n], alt1[n], homo1) + single_read_likelihood(ref2[n], alt2[n], homo2) + likelihoods[n, 0:n+1]
             likelihoods[n+1, 1:n+2] = np.logaddexp(l1, l2)
             
     return logsumexp(likelihoods[N,1:-1] + get_k_mut_priors(N, affect_all = False))

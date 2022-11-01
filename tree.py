@@ -101,9 +101,9 @@ class CellTree:
             need_adoption = [mrca[child.ID] for child in mnode.children if mrca[child.ID] >= 0]
             need_adoption += np.where(mutation_tree.attachments == mnode.ID)[0].tolist()
             # if no cell found below mnode, nothing to do
-            if len(need_adoption) == 1: # 1 cell found, no internal node added
+            if len(need_adoption) == 1: # one cell below, no internal node added
                 mrca[mnode.ID] = need_adoption[0] 
-            elif len(need_adoption) > 1: # more than one cell found, add new internal node(s)
+            elif len(need_adoption) > 1: # more than one cell below, add new internal node(s)
                 current_idx = self.random_subtree(need_adoption, current_idx)
                 mrca[mnode.ID] = current_idx - 1
         
@@ -271,7 +271,10 @@ class MutationTree:
         pass # to be implemented
     
     
-    def fit_structure(self, cell_tree): 
+    def fit_structure(self, cell_tree, random_order = False): 
+        '''
+        random_order: whether the order of mutations on the same edge is randomized
+        '''
         for node in self.nodes: 
             node.assign_parent(None) # clear the current structure
         mrm = np.empty(cell_tree.n_nodes, dtype = int) # mrm for "most recent mutation"
@@ -283,7 +286,8 @@ class MutationTree:
             mut_idx = mutations[cnode.ID] # mutations attached to the edge above cnode
             parent_mut = mrm[cnode.parent.ID]
             if mut_idx: 
-                shuffle(mut_idx)
+                if random_order: 
+                    shuffle(mut_idx)
                 self.nodes[mut_idx[0]].assign_parent(self.nodes[parent_mut])
                 for idx1, idx2 in zip(mut_idx, mut_idx[1:]): 
                     self.nodes[idx2].assign_parent(self.nodes[idx1])

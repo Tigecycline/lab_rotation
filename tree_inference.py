@@ -223,10 +223,11 @@ class TreeOptimizer:
     
     def optimize(self, print_result = True, strategy = 'hill climb', spaces = None): 
         '''
+        strategy: 'hill climb' is the only available option now 
+            it accepts moves that (strictly) increase the joint likelihood and rejects everything else 
         spaces: spaces that will be searched and the order of the search
             'c' = cell tree space, 'm' = mutation tree space
             default is ['c','m'], i.e. start with cell tree and search both spaces
-            more spaces can be added in the future
         '''
         ct_convergence = self.n_cells * self.convergence_factor
         mt_convergence = self.n_mut * self.convergence_factor * 2
@@ -236,7 +237,7 @@ class TreeOptimizer:
         if spaces is None: 
             spaces = ['c','m']
         n_spaces = len(spaces)
-        converged = [False] * n_spaces
+        converged = [False] * n_spaces # searching stops when all spaces have converged
         
         self.likelihood_history = [np.inf]
         self.space_history = []
@@ -268,7 +269,7 @@ class TreeOptimizer:
             self.likelihood_history += new_history
             self.space_history += [current_space] * len(new_history)
 
-            # swap to the next space
+            # move to the next space
             space_idx = (space_idx + 1) % n_spaces
 
     
@@ -300,7 +301,7 @@ def read_data(fn_ref, fn_alt, chromosome = None, row_is_cell = False):
         return ref.T, alt.T
 
     
-def filter_mutations(ref, alt, consider_LOH = False, threshold = None): 
+def filter_mutations(ref, alt, threshold = None): 
     '''
     Infer genotypes from matrices of reference and alternative alleles
     Then filter ref and alt according to the posteriors
@@ -328,15 +329,10 @@ def filter_mutations(ref, alt, consider_LOH = False, threshold = None):
     return ref_filtered, alt_filtered, gt1, gt2
 
 
-#def infer_tree(likelihoods1, likelihoods2, reversible = True): 
-#    optz = TreeOptimizer()
-#    optz.fit(likelihoods2, likelihoods1, reversible = reversible)
-#    optz.optimize()
-#    
-#    return optz
-
-
 def mean_likelihood(ct, likelihoods1, likelihoods2): 
+    '''
+    used to get the mean_likelihood of a knwon cell tree
+    '''
     optz = TreeOptimizer()
     optz.fit(likelihoods2, likelihoods1, reversible = True)
     optz.ct = ct

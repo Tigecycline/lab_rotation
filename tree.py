@@ -267,6 +267,11 @@ class MutationTree:
         return result
     
     
+    @property
+    def dist_matrix(self): 
+        pass # to be implemented
+    
+    
     def random_structure(self): 
         pass # to be implemented
     

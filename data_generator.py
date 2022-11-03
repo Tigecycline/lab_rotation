@@ -8,13 +8,12 @@ class DataGenerator:
     mutation_types = ['RH', 'AH', 'HR', 'HA']
     
     
-    def __init__(self, n_cells = 8, n_loci = 16, f = 0.95, omega = 100, omega_h = 50, cell_tree = None, mut_prop = 1., gt1 = None, gt2 = None, coverage_sampler = None):
+    def __init__(self, n_cells = 8, n_loci = 16, f = 0.95, omega = 100, omega_h = 50, cell_tree = None, gt1 = None, gt2 = None, coverage_sampler = None):
         self.n_cells = n_cells
         self.n_loci = n_loci
         self.alpha = f * omega
         self.beta = omega - self.alpha
         self.omega_h = omega_h
-        self.mut_prop = mut_prop
         self.tree = cell_tree
         
         if gt1 is None and gt2 is None: 
@@ -29,11 +28,12 @@ class DataGenerator:
             self.coverage_sampler = coverage_sampler 
     
     
-    def random_mutations(self): 
+    def random_mutations(self, mutated = None, mut_prop = 1.): 
         self.gt1 = np.random.choice(['R', 'A', 'H'], size = self.n_loci, replace = True)
         self.gt2 = self.gt1.copy()
-        mutated_loci = np.random.choice(self.n_loci, size = int(self.n_loci * self.mut_prop), replace = False)
-        for j in mutated_loci: 
+        if mutated is None: 
+            mutated = np.random.choice(self.n_loci, size = round(self.n_loci * mut_prop), replace = False)
+        for j in mutated: 
             if self.gt1[j] == 'H': 
                 self.gt2[j] = np.random.choice(['R', 'A']) # mutation HA and HR with equal probability
             else: 

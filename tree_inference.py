@@ -1,3 +1,5 @@
+import pandas as pd
+
 from tree import *
 from mutation_detection import *
 from LOH_detection import *
@@ -291,8 +293,8 @@ def read_data(fn_ref, fn_alt, chromosome = None, row_is_cell = False):
         df_ref = df_ref.loc[chromosome,:]
         df_alt = df_alt.loc[chromosome,:]
     
-    ref = df_ref.to_numpy(dtype = float)
-    alt = df_alt.to_numpy(dtype = float)
+    ref = df_ref.to_numpy(dtype = int)
+    alt = df_alt.to_numpy(dtype = int)
     #coverage = ref.flatten() + alt.flatten()
     
     if row_is_cell: 

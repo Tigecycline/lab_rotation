@@ -48,7 +48,15 @@ def likelihood_matrices(ref, alt, gt1, gt2, correlated = None, n_threads = 4):
     return likelihoods1, likelihoods2
 
 
-def likelihood_k_mut(ref, alt, gt1, gt2): 
+def k_mut_priors(N, affect_all = True):
+    result = np.array([2 * logbinom(N, k) - np.log(2*k-1) - logbinom(2*N, 2*k) for k in range(1,N+1)])
+    if affect_all: # take into condiseration the case of all cells being mutated
+        return result
+    else: # consider only cases where at least two genotypes exist
+        return lognormalize(result[:-1])
+
+
+def k_mut_likelihoods(ref, alt, gt1, gt2): 
     '''
     ref, alt: read counts for a locus
     gt1, gt2: genotypes of interest
@@ -58,7 +66,7 @@ def likelihood_k_mut(ref, alt, gt1, gt2):
     #assert(alt.size == N)
     
     if gt1 == gt2: 
-        return np.sum([single_read_likelihood(ref[i], alt[i]) for i in range(N)])
+        return np.sum([single_read_likelihood(ref[i], alt[i], gt1) for i in range(N)])
     
     k_in_first_n = np.ones((N+1, N+1)) * (-np.inf) # [n,k]: likelihood that k among the first n cells are mutated 
     k_in_first_n[0,0] = 0 # Trivial case when there is 0 cell: number of mutated cells must be 0
@@ -74,40 +82,17 @@ def likelihood_k_mut(ref, alt, gt1, gt2):
     return k_in_first_n[N, :]
 
 
-def locus_posteriors(ref, alt, RH_priors, HA_priors): 
+def composition_priors(n_cells, genotype_freq, mutation_rate):
     '''
-    posteriors for different mutation states: ['R', 'H', 'A', 'RH', 'HA']
-    '''
-    RH = likelihood_k_mut(ref, alt, 'R', 'H')
-    HA = likelihood_k_mut(ref, alt, 'H', 'A')
-
-    joint_probabilities = np.array([RH[0] + RH_priors[0], # R
-                                    HA[0] + HA_priors[0], # H
-                                    HA[-1] + HA_priors[-1], # A 
-                                    logsumexp(RH[1:-1] + RH_priors[1:-1]), # RH
-                                    logsumexp(HA[1:-1] + HA_priors[1:-1]), # HA
-                                   ])
-    posteriors = lognormalize(joint_probabilities)
-    return posteriors
-
-
-def k_mut_priors(N, affect_all = True):
-    result = np.array([2 * logbinom(N, k) - np.log(2*k-1) - logbinom(2*N, 2*k) for k in range(1,N+1)])
-    if affect_all: # take into condiseration the case of all cells being mutated
-        return result
-    else: # consider only cases where at least two genotypes exist
-        return lognormalize(result[:-1])
-
-
-def composition_priors(n_cells, genotype_freq = {'R': 1/3, 'H': 1/3, 'A': 1/3}, mutation_rate = 0.25):
-    '''
-    genotype_freq: dictionary, prior probabilities of the root having genotype R, H or A
+    genotype_freq: prior probabilities of the root having genotype R, H or A
     mutation_rate: proportion of mutated loci
     
-    returns priors for RH mixture and AH mixture
+    In case of 'R', 'H' and 'A', the result is a single prior value
+    In case the locus is mutated, the result is an array of priors for different compositions
+    A "composition" refers to a specific number of affected cells
+    N.B. for computational convenience, the arrays 'HR' and 'AH' are flipped
     '''
     state_freq = {s: None for s in ['R', 'H', 'A', 'RH', 'HR', 'AH', 'HA']}
-    # state_freq = pd.DataFrame(data = np.zeros(7), columns = ['frequency'], index = ['RR', 'HH', 'AA', ''])
     state_freq['R'] = genotype_freq['R'] * (1 - mutation_rate)
     state_freq['H'] = genotype_freq['H'] * (1 - mutation_rate)
     state_freq['A'] = genotype_freq['A'] * (1 - mutation_rate)
@@ -115,78 +100,59 @@ def composition_priors(n_cells, genotype_freq = {'R': 1/3, 'H': 1/3, 'A': 1/3}, 
     state_freq['HR'] = genotype_freq['H'] * mutation_rate/2 
     state_freq['AH'] = genotype_freq['A'] * mutation_rate 
     state_freq['HA'] = genotype_freq['H'] * mutation_rate/2
-    # convert into log space
     for s in state_freq: 
-        state_freq[s] = np.log(state_freq[s])
+        state_freq[s] = np.log(state_freq[s]) # convert to log space
     
     k_priors = k_mut_priors(n_cells)
-    
-    result = np.ones(2*n_cells + 1) * (-np.inf) # R --- RH mixture --- H --- HA mixture --- A
-    result[0] = state_freq['R']
-    result[n_cells] = state_freq['H']
-    result[-1] = state_freq['A']
-    for k in range(1, n_cells+1): 
-        result[k] = np.logaddexp(result[k], state_freq['RH'] + k_priors[k-1])
-        result[n_cells - k] = np.logaddexp(result[n_cells - k], state_freq['HR'] + k_priors[k-1])
-        result[-k-1] = np.logaddexp(result[-k-1], state_freq['AH'] + k_priors[k-1])
-        result[n_cells + k] = np.logaddexp(result[n_cells + k], state_freq['HA'] + k_priors[k-1])
+
+    result = {}
+    for state in ['R', 'H', 'A']: 
+        result[state] = state_freq[state]
+    for state in ['RH', 'HR', 'HA', 'AH']:
+        result[state] = state_freq[state] + k_priors
+    for state in ['HR', 'AH']:
+        result[state] = np.flip(result[state])
     
     return result
+
+
+def locus_posteriors(ref, alt, priors): 
+    '''
+    different mutation states: ['R', 'H', 'A', 'RH', 'HR', 'HA', 'AH']
+    '''
+    RH_likelihoods = k_mut_likelihoods(ref, alt, 'R', 'H')
+    HA_likelihoods = k_mut_likelihoods(ref, alt, 'H', 'A')
+    assert(RH_likelihoods[-1] == HA_likelihoods[0])
+
+    joint_probabilities = np.array([
+        RH_likelihoods[0] + priors['R'],
+        HA_likelihoods[0] + priors['H'],
+        HA_likelihoods[-1] + priors['A'],
+        logsumexp(RH_likelihoods[1:] + priors['RH']),
+        logsumexp(RH_likelihoods[:-1] + priors['HR']),
+        logsumexp(HA_likelihoods[1:] + priors['HA']),
+        logsumexp(HA_likelihoods[:-1] + priors['AH'])
+    ])
+    posteriors = lognormalize(joint_probabilities)
+    return posteriors
     
 
-def mut_type_posteriors(ref, alt, genotype_freq = {'R': 1/3, 'H': 1/3, 'A': 1/3}, mutation_rate = 0.5, log_scale = False, n_threads = 4): 
+def mut_type_posteriors(ref, alt, genotype_freq = {'R': 1/4, 'H': 1/2, 'A': 1/4}, mutation_rate = 0.5, n_threads = 4, ignore_dir = True): 
     n_cells, n_loci = ref.shape
     # assert(n_loci == alt.shape[0] and n_cells == alt.shape[1])
     # assert(df_ref.index.size == n_loci)
     
     # get priors for each situation 
-    compo = composition_priors(n_cells, genotype_freq, mutation_rate)
-    RH_priors = compo[:n_cells+1]
-    HA_priors = compo[n_cells:]
+    priors = composition_priors(n_cells, genotype_freq, mutation_rate)
 
     # multiprocessing
     pool = mp.Pool(n_threads)
-    result = [pool.apply_async(locus_posteriors, (ref[:,j], alt[:,j], RH_priors, HA_priors)) for j in range(n_loci)]
+    result = [pool.apply_async(locus_posteriors, (ref[:,j], alt[:,j], priors)) for j in range(n_loci)]
     result = np.stack([r.get() for r in result])
-    
-    if not log_scale:
-        result = np.exp(result)
-    
+
+    result = np.exp(result) # convert back to linear space
+    if ignore_dir: # consider mutations with opposite directions as a single type
+        result[:,3] = result[:,3] + result[:,4] # merge RH and HR
+        result[:,4] = result[:,5] + result[:,6] # merge HA and AH
+        result = result[:,:5]
     return result
-    
-
-
-
-    
-    
-    
-
-    
-def test_thread_numbers(ref, alt, max_n_threads):  
-    time_costs = np.empty(max_n_threads)
-    for n in range(1,max_n_threads+1): 
-        start_time = time.time()
-        get_posteriors(ref, alt, n_threads = n)
-        time_costs[n-1] = time.time() - start_time
-
-    return time_costs
-    
-    
-if __name__ == '__main__': 
-    import pandas as pd
-    ref = pd.read_csv('./Data/glioblastoma_BT_S2/ref.csv', index_col = 0).to_numpy(dtype = float)
-    alt = pd.read_csv('./Data/glioblastoma_BT_S2/alt.csv', index_col = 0).to_numpy(dtype = float)
-    
-    n_loci = 20
-    time_costs = test_thread_numbers(ref[:n_loci,:], alt[:n_loci,:], 12)
-
-    plt.figure(figsize = (8,6))
-    plt.plot(np.array(range(1, 13)), time_costs)
-    plt.xlabel('number of threads')
-    plt.ylabel('runtime (s)')
-    plt.grid()
-    plt.show()
-
-    
-    
-    

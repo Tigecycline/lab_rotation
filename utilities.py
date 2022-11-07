@@ -35,3 +35,8 @@ def path_len_dist(tree1, tree2):
     dist_mat1, dist_mat2 = tree1.dist_matrix, tree2.dist_matrix
     denominator = (dist_mat1.size - dist_mat1.shape[0]) / 2
     return np.sum((dist_mat1 - dist_mat2)**2) / denominator
+
+
+def coverage_sampler(ref, alt): 
+    coverages = ref.flatten() + alt.flatten()
+    return lambda: np.random.choice(coverages)

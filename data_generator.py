@@ -16,9 +16,7 @@ class DataGenerator:
         self.omega_h = omega_h
         self.tree = cell_tree
         
-        if gt1 is None and gt2 is None: 
-            self.random_mutations()
-        else: 
+        if gt1 is not None and gt2 is not None: 
             self.gt1 = gt1
             self.gt2 = gt2
         

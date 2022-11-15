@@ -1,5 +1,3 @@
-import pandas as pd
-
 from tree import *
 from mutation_detection import *
 from LOH_detection import *
@@ -142,7 +140,7 @@ class TreeOptimizer:
         self.mt_attach_cells()
     
     
-    def ct_hill_climb(self, convergence, timeout = np.inf, weights = [0.5, 0.5], print_result = True): 
+    def ct_hill_climb(self, convergence, timeout = np.inf, weights = [0.5, 0.5], print_info = True): 
         n_proposed = 0 # number of failed moves
         n_steps = 0
         likelihood_history = [self.ct_joint]
@@ -174,7 +172,7 @@ class TreeOptimizer:
         # However, recalculation is necessary after hill-climbing is over
         self.update_ct()
         
-        if print_result: 
+        if print_info: 
             if n_steps == timeout: 
                 status = 'timeout'
             else: 
@@ -184,7 +182,7 @@ class TreeOptimizer:
         return likelihood_history
         
         
-    def mt_hill_climb(self, convergence, timeout = np.inf, weights = [0.5, 0.5], print_result = True): 
+    def mt_hill_climb(self, convergence, timeout = np.inf, weights = [0.5, 0.5], print_info = True): 
         n_proposed = 0 # number of failed moves
         n_steps = 0
         likelihood_history = [self.mt_joint]
@@ -213,7 +211,7 @@ class TreeOptimizer:
         # for the same reason as in self.update_ct_likelihoods
         self.update_mt()
         
-        if print_result: 
+        if print_info: 
             if n_steps == timeout: 
                 status = 'timeout'
             else: 
@@ -223,7 +221,7 @@ class TreeOptimizer:
         return likelihood_history
     
     
-    def optimize(self, print_result = True, strategy = 'hill climb', spaces = None): 
+    def optimize(self, print_info = True, strategy = 'hill climb', spaces = None, n_space_max = None): 
         '''
         strategy: 'hill climb' is the only available option now 
             it accepts moves that (strictly) increase the joint likelihood and rejects everything else 
@@ -239,23 +237,30 @@ class TreeOptimizer:
         if spaces is None: 
             spaces = ['c','m']
         n_spaces = len(spaces)
-        converged = [False] * n_spaces # searching stops when all spaces have converged
+        converged = [False] * n_spaces # stop searching when all spaces have converged
         
-        self.likelihood_history = [np.inf]
+        self.likelihood_history = [-np.inf]
         self.space_history = []
         space_idx = 0
         
+        if n_space_max is None:
+            n_space_max = min(self.n_cells, self.n_mut) * n_spaces
+        space_counter = 0
         while not all(converged): 
+            space_counter += 1
+            if space_counter > n_space_max: # monitor and cut infinite loops
+                print('[TreeOptimizer.optimize] WARNING: maximal number (%i) of spaces reached' % n_space_max)
+                return
             # 0 = cell tree space, 1 = mutation tree space
             current_space = spaces[space_idx]
             if current_space == 'c': 
-                new_history = self.ct_hill_climb(convergence = ct_convergence, timeout = ct_timeout, print_result = print_result)
+                new_history = self.ct_hill_climb(convergence = ct_convergence, timeout = ct_timeout, print_info = print_info)
                 self.mt.fit_structure(self.ct)
                 self.mt_L[:,self.mt.root.ID] = np.sum(self.likelihoods1, axis = 1)
                 self.update_mt()
 
             elif current_space == 'm': 
-                new_history = self.mt_hill_climb(convergence = mt_convergence, timeout = mt_timeout, print_result = print_result)
+                new_history = self.mt_hill_climb(convergence = mt_convergence, timeout = mt_timeout, print_info = print_info)
                 self.ct.fit_structure(self.mt)
                 self.update_ct()
                 
@@ -265,7 +270,10 @@ class TreeOptimizer:
             
             if new_history[-1] == self.likelihood_history[-1]: 
                 converged[space_idx] = True
-            else: 
+            elif new_history[-1] < self.likelihood_history[-1]:
+                print('[TreeOptimizer.optimize] ERROR: likelihood decreased')
+                return
+            else:
                 converged[space_idx] = False
             
             self.likelihood_history += new_history
@@ -273,62 +281,6 @@ class TreeOptimizer:
 
             # move to the next space
             space_idx = (space_idx + 1) % n_spaces
-
-    
-    
-    
-def read_data(fn_ref, fn_alt, chromosome = None, row_is_cell = False): 
-    df_ref = pd.read_csv(fn_ref, index_col = 0)
-    df_alt = pd.read_csv(fn_alt, index_col = 0)
-    
-    df_ref['chromosome'] = [locus.split('_')[0] for locus in df_ref.index]
-    df_ref['locus'] = [locus.split('_')[1] for locus in df_ref.index]
-    df_ref = df_ref.set_index(['chromosome', 'locus']) # use multi-index
-
-    df_alt['chromosome'] = [locus.split('_')[0] for locus in df_alt.index]
-    df_alt['locus'] = [locus.split('_')[1] for locus in df_alt.index]
-    df_alt = df_alt.set_index(['chromosome', 'locus'])
-    
-    if chromosome is not None: 
-        df_ref = df_ref.loc[chromosome,:]
-        df_alt = df_alt.loc[chromosome,:]
-    
-    ref = df_ref.to_numpy(dtype = int)
-    alt = df_alt.to_numpy(dtype = int)
-    #coverage = ref.flatten() + alt.flatten()
-    
-    if row_is_cell: 
-        return ref, alt
-    else: 
-        return ref.T, alt.T
-
-    
-def filter_mutations(ref, alt, threshold = None): 
-    '''
-    Infer genotypes from matrices of reference and alternative alleles
-    Then filter ref and alt according to the posteriors
-    '''
-    assert(ref.shape == alt.shape)
-    n_cells, n_loci = ref.shape
-    
-    #print('Calculating mutation type posteriors...')
-    posteriors = mut_type_posteriors(ref, alt, n_threads = 6)
-    
-    if threshold is None: 
-        # if no threshold provided, pick highest posterior
-        selected = np.where(np.argmax(posteriors, axis = 1) >= 3)[0]
-    else: 
-        # choose loci at which the sum of the two mutated posteriors > threshold 
-        selected = np.where(np.sum(posteriors[:,3:], axis = 1) > threshold)[0]
-    
-    # Todo: apply LOH detection
-    
-    ref_filtered, alt_filtered = ref[:,selected], alt[:,selected]
-    mut_type = np.argmax(posteriors[selected, 3:], axis = 1) # 0 means HR, 1 means HA
-    gt1 = np.array(['H'] * len(selected))
-    gt2 = np.choose(mut_type, choices = ['R', 'A'])
-    
-    return ref_filtered, alt_filtered, gt1, gt2
 
 
 def mean_likelihood(ct, likelihoods1, likelihoods2): 

@@ -1,6 +1,33 @@
 from random import randrange
 from scipy.special import loggamma, logsumexp
 import numpy as np
+import pandas as pd
+
+
+def read_data(fn_ref, fn_alt, chromosome = None, row_is_cell = False): 
+    df_ref = pd.read_csv(fn_ref, index_col = 0)
+    df_alt = pd.read_csv(fn_alt, index_col = 0)
+    
+    df_ref['chromosome'] = [locus.split('_')[0] for locus in df_ref.index]
+    df_ref['locus'] = [locus.split('_')[1] for locus in df_ref.index]
+    df_ref = df_ref.set_index(['chromosome', 'locus']) # use multi-index
+
+    df_alt['chromosome'] = [locus.split('_')[0] for locus in df_alt.index]
+    df_alt['locus'] = [locus.split('_')[1] for locus in df_alt.index]
+    df_alt = df_alt.set_index(['chromosome', 'locus'])
+    
+    if chromosome is not None: 
+        df_ref = df_ref.loc[chromosome,:]
+        df_alt = df_alt.loc[chromosome,:]
+    
+    ref = df_ref.to_numpy(dtype = int)
+    alt = df_alt.to_numpy(dtype = int)
+    #coverage = ref.flatten() + alt.flatten()
+    
+    if row_is_cell: 
+        return ref, alt
+    else: 
+        return ref.T, alt.T
 
 
 def logbinom(n, k): 
@@ -37,6 +64,8 @@ def path_len_dist(tree1, tree2):
     return np.sum((dist_mat1 - dist_mat2)**2) / denominator
 
 
-def coverage_sampler(ref, alt): 
+def coverage_sampler(ref = None, alt = None): 
+    if ref is None or alt is None: 
+        ref, alt = read_data('./Data/glioblastoma_BT_S2/ref.csv', './Data/glioblastoma_BT_S2/alt.csv')
     coverages = ref.flatten() + alt.flatten()
     return lambda: np.random.choice(coverages)

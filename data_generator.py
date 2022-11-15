@@ -8,7 +8,7 @@ class DataGenerator:
     mutation_types = ['RH', 'AH', 'HR', 'HA']
     
     
-    def __init__(self, n_cells = 8, n_loci = 16, f = 0.95, omega = 100, omega_h = 50, cell_tree = None, gt1 = None, gt2 = None, coverage_sampler = None):
+    def __init__(self, n_cells, n_loci, f = 0.95, omega = 100, omega_h = 50, cell_tree = None, gt1 = None, gt2 = None, coverage_sampler = None):
         self.n_cells = n_cells
         self.n_loci = n_loci
         self.alpha = f * omega
@@ -26,26 +26,29 @@ class DataGenerator:
             self.coverage_sampler = coverage_sampler 
     
     
-    def random_mutations(self, mutated = None, mut_prop = 1.): 
-        self.gt1 = np.random.choice(['R', 'A', 'H'], size = self.n_loci, replace = True)
+    def random_mutations(self, mutated = None, mut_prop = 1., genotype_freq = None):
+        if genotype_freq is None:
+            genotype_freq = [1/3, 1/3, 1/3] # R, H, A
+        self.gt1 = np.random.choice(['R', 'H', 'A'], size = self.n_loci, replace = True, p = genotype_freq)
         self.gt2 = self.gt1.copy()
-        if mutated is None: 
+        if mutated is None:
             mutated = np.random.choice(self.n_loci, size = round(self.n_loci * mut_prop), replace = False)
-        for j in mutated: 
-            if self.gt1[j] == 'H': 
+        for j in mutated:
+            if self.gt1[j] == 'H':
                 self.gt2[j] = np.random.choice(['R', 'A']) # mutation HA and HR with equal probability
-            else: 
+            else:
                 self.gt2[j] = 'H'
     
     
-    def random_tree(self): 
+    def random_tree(self, one_cell_mut = True): 
         self.tree = CellTree(self.n_cells, self.n_loci)
         self.tree.randomize()
-        self.random_mut_locations()
+        self.random_mut_locations(one_cell_mut)
     
     
-    def random_mut_locations(self): 
-        self.tree.attachments = np.random.randint(self.tree.n_nodes, size = self.n_loci)
+    def random_mut_locations(self, one_cell_mut = True):
+        low = 0 if one_cell_mut else self.n_cells
+        self.tree.attachments = np.random.randint(low, self.tree.n_nodes, size = self.n_loci)
     
     
     def generate_single_read(self, genotype, coverage): 

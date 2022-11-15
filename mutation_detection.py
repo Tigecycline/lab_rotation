@@ -11,15 +11,28 @@ def single_read_likelihood(n_ref, n_alt, genotype, f = 0.95, omega = 100, log_sc
     ''' 
     likelihood of reference and alternative read counts at a specific cell and locus, given the corresponding genotype
     '''
-    if genotype == 'R': 
+    '''
+    For python 3.10 consider this: 
+    match genotype:
+        case 'R':
+            alpha = f * omega
+            beta = omega - alpha
+        case 'A':
+            alpha = (1 - f) * omega
+            beta = omega - alpha
+        case 'H':
+            alpha = omega/4
+            beta = omega/4
+    '''
+    if genotype == 'R':
         alpha = f * omega
         beta = omega - alpha
-    elif genotype == 'A': 
+    elif genotype == 'A':
         alpha = (1 - f) * omega
         beta = omega - alpha
-    elif genotype == 'H': 
-        alpha = omega/4 
-        beta = omega/4 
+    elif genotype == 'H':
+        alpha = omega/4
+        beta = omega/4
     
     if log_scale: 
         return betabinom.logpmf(n_ref, n_ref + n_alt, alpha, beta)
@@ -27,7 +40,7 @@ def single_read_likelihood(n_ref, n_alt, genotype, f = 0.95, omega = 100, log_sc
         return betabinom.pmf(n_ref, n_ref + n_alt, alpha, beta)
 
     
-def likelihood_matrices(ref, alt, gt1, gt2, correlated = None, n_threads = 4):
+def likelihood_matrices(ref, alt, gt1, gt2, n_threads = 4):
     '''
     likelihoods1[i,j]: likelihood of cell i having gt1 at locus j
     likelihoods2[i,j]: likelihood of cell i having gt2 at locus j
@@ -68,7 +81,7 @@ def k_mut_likelihoods(ref, alt, gt1, gt2):
     if gt1 == gt2: 
         return np.sum([single_read_likelihood(ref[i], alt[i], gt1) for i in range(N)])
     
-    k_in_first_n = np.ones((N+1, N+1)) * (-np.inf) # [n,k]: likelihood that k among the first n cells are mutated 
+    k_in_first_n = np.full((N+1, N+1), -np.inf) # [n,k]: likelihood that k among the first n cells are mutated 
     k_in_first_n[0,0] = 0 # Trivial case when there is 0 cell: number of mutated cells must be 0
     
     with np.errstate(divide='ignore'): # TODO: other methods to deal with log 0 problem? 
@@ -82,10 +95,10 @@ def k_mut_likelihoods(ref, alt, gt1, gt2):
     return k_in_first_n[N, :]
 
 
-def composition_priors(n_cells, genotype_freq, mutation_rate):
+def composition_priors(n_cells, genotype_freq, mut_prop):
     '''
     genotype_freq: prior probabilities of the root having genotype R, H or A
-    mutation_rate: proportion of mutated loci
+    mut_prop: prior for the proportion of mutated loci
     
     In case of 'R', 'H' and 'A', the result is a single prior value
     In case the locus is mutated, the result is an array of priors for different compositions
@@ -93,13 +106,14 @@ def composition_priors(n_cells, genotype_freq, mutation_rate):
     N.B. for computational convenience, the arrays 'HR' and 'AH' are flipped
     '''
     state_freq = {s: None for s in ['R', 'H', 'A', 'RH', 'HR', 'AH', 'HA']}
-    state_freq['R'] = genotype_freq['R'] * (1 - mutation_rate)
-    state_freq['H'] = genotype_freq['H'] * (1 - mutation_rate)
-    state_freq['A'] = genotype_freq['A'] * (1 - mutation_rate)
-    state_freq['RH'] = genotype_freq['R'] * mutation_rate 
-    state_freq['HR'] = genotype_freq['H'] * mutation_rate/2 
-    state_freq['AH'] = genotype_freq['A'] * mutation_rate 
-    state_freq['HA'] = genotype_freq['H'] * mutation_rate/2
+    state_freq['R'] = genotype_freq['R'] * (1 - mut_prop)
+    state_freq['H'] = genotype_freq['H'] * (1 - mut_prop)
+    state_freq['A'] = genotype_freq['A'] * (1 - mut_prop)
+    state_freq['RH'] = genotype_freq['R'] * mut_prop 
+    state_freq['HA'] = genotype_freq['H'] * mut_prop/2
+    state_freq['HR'] = genotype_freq['H'] * mut_prop/2 
+    state_freq['AH'] = genotype_freq['A'] * mut_prop
+    
     for s in state_freq: 
         state_freq[s] = np.log(state_freq[s]) # convert to log space
     
@@ -108,7 +122,7 @@ def composition_priors(n_cells, genotype_freq, mutation_rate):
     result = {}
     for state in ['R', 'H', 'A']: 
         result[state] = state_freq[state]
-    for state in ['RH', 'HR', 'HA', 'AH']:
+    for state in ['RH', 'HA', 'HR', 'AH']:
         result[state] = state_freq[state] + k_priors
     for state in ['HR', 'AH']:
         result[state] = np.flip(result[state])
@@ -116,34 +130,47 @@ def composition_priors(n_cells, genotype_freq, mutation_rate):
     return result
 
 
-def locus_posteriors(ref, alt, priors): 
+def locus_posteriors(ref, alt, priors, single_cell_mut = False): 
     '''
-    different mutation states: ['R', 'H', 'A', 'RH', 'HR', 'HA', 'AH']
+    single_cell_mut: whether to consider a locus as mutated when the mutation affects one single cell
+    different mutation states: ['R', 'H', 'A', 'RH', 'HA', 'HR', 'AH']
     '''
     RH_likelihoods = k_mut_likelihoods(ref, alt, 'R', 'H')
     HA_likelihoods = k_mut_likelihoods(ref, alt, 'H', 'A')
     assert(RH_likelihoods[-1] == HA_likelihoods[0])
 
-    joint_probabilities = np.array([
-        RH_likelihoods[0] + priors['R'],
-        HA_likelihoods[0] + priors['H'],
-        HA_likelihoods[-1] + priors['A'],
-        logsumexp(RH_likelihoods[1:] + priors['RH']),
-        logsumexp(RH_likelihoods[:-1] + priors['HR']),
-        logsumexp(HA_likelihoods[1:] + priors['HA']),
-        logsumexp(HA_likelihoods[:-1] + priors['AH'])
-    ])
+    if single_cell_mut:
+        joint_probabilities = np.array([
+            RH_likelihoods[0] + priors['R'],
+            HA_likelihoods[0] + priors['H'],
+            HA_likelihoods[-1] + priors['A'],
+            logsumexp(RH_likelihoods[1:] + priors['RH']),
+            logsumexp(RH_likelihoods[:-1] + priors['HR']),
+            logsumexp(HA_likelihoods[1:] + priors['HA']),
+            logsumexp(HA_likelihoods[:-1] + priors['AH'])
+        ])
+    else:
+        joint_probabilities = np.array([
+            logsumexp([RH_likelihoods[0] + priors['R'], RH_likelihoods[1] + priors['RH'][0]]),
+            logsumexp([HA_likelihoods[0] + priors['H'], HA_likelihoods[1] + priors['HA'][0], RH_likelihoods[-2] + priors['HR'][0]]),
+            logsumexp([HA_likelihoods[-1] + priors['A'], HA_likelihoods[-2] + priors['AH'][0]]),
+            logsumexp(RH_likelihoods[2:] + priors['RH'][1:]),
+            logsumexp(HA_likelihoods[2:] + priors['HA'][1:]),
+            logsumexp(RH_likelihoods[:-2] + priors['HR'][1:]),
+            logsumexp(HA_likelihoods[:-2] + priors['AH'][1:])
+        ])
+    
     posteriors = lognormalize(joint_probabilities)
     return posteriors
-    
 
-def mut_type_posteriors(ref, alt, genotype_freq = {'R': 1/4, 'H': 1/2, 'A': 1/4}, mutation_rate = 0.5, n_threads = 4, ignore_dir = True): 
+
+def mut_type_posteriors(ref, alt, genotype_freq = {'R': 1/4, 'H': 1/2, 'A': 1/4}, mut_prop = 0.5, single_cell_mut = False, n_threads = 4): 
     n_cells, n_loci = ref.shape
     # assert(n_loci == alt.shape[0] and n_cells == alt.shape[1])
     # assert(df_ref.index.size == n_loci)
     
     # get priors for each situation 
-    priors = composition_priors(n_cells, genotype_freq, mutation_rate)
+    priors = composition_priors(n_cells, genotype_freq, mut_prop)
 
     # multiprocessing
     pool = mp.Pool(n_threads)
@@ -151,8 +178,34 @@ def mut_type_posteriors(ref, alt, genotype_freq = {'R': 1/4, 'H': 1/2, 'A': 1/4}
     result = np.stack([r.get() for r in result])
 
     result = np.exp(result) # convert back to linear space
-    if ignore_dir: # consider mutations with opposite directions as a single type
-        result[:,3] = result[:,3] + result[:,4] # merge RH and HR
-        result[:,4] = result[:,5] + result[:,6] # merge HA and AH
-        result = result[:,:5]
     return result
+
+
+def filter_mutations(ref, alt, genotype_freq = {'R': 1/4, 'H': 1/2, 'A': 1/4}, mut_prop = 0.5, method = 'highest_P', t = None, n_exp = None): 
+    '''
+    Infer genotypes from matrices of reference and alternative alleles
+    Then filter ref and alt according to the posteriors
+    '''
+    assert(ref.shape == alt.shape)
+    posteriors = mut_type_posteriors(ref, alt, genotype_freq, mut_prop)
+    # merge mutations of opposite directions
+    #posteriors[:,3] += posteriors[:,5]
+    #posteriors[:,4] += posteriors[:,6]
+    #posteriors = posteriors[:,:5]
+    
+    # TBC: use match instead of if-elif
+    if method == 'highest_P': # for each locus, choose the state with highest posterior
+        selected = np.where(np.argmax(posteriors, axis = 1) >= 3)[0]
+    elif method == 'threshold': # choose loci at which mutated posterior > threshold 
+        selected = np.where(np.sum(posteriors[:,3:], axis = 1) > t)[0]
+    elif method == 'first_N': # choose loci with the N highest mutated posteriors
+        mut_posteriors = np.sum(posteriors[:,3:], axis = 1)
+        order = np.argsort(mut_posteriors)
+        selected = order[-n_exp:]
+    
+    ref_filtered, alt_filtered = ref[:,selected], alt[:,selected]
+    mut_type = np.argmax(posteriors[selected, 3:], axis = 1) 
+    gt1 = np.choose(mut_type, choices = ['R', 'H', 'H', 'A'])
+    gt2 = np.choose(mut_type, choices = ['H', 'A', 'R', 'H'])
+    
+    return ref_filtered, alt_filtered, gt1, gt2

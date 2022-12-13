@@ -10,10 +10,8 @@ from utilities import randint_with_exclude
 
 
 class CellTree: 
-    def __init__(self, n_cells = 1, n_mut = None): 
+    def __init__(self, n_cells = 1): 
         self.n_cells = n_cells 
-        self.n_mut = n_mut
-        self.mutation_tree = None
         self.nodes = [TreeNode(i) for i in range(2 * self.n_cells - 1)]
         self.root = None
         
@@ -28,6 +26,14 @@ class CellTree:
         ''' number of nodes '''
         return len(self.nodes)
     
+
+    @property
+    def n_mut(self):
+        if self.attachments is None:
+            return 0
+        else:
+            return len(self.attachments)
+
     
     @property
     def mutations(self): 
@@ -38,6 +44,53 @@ class CellTree:
                     result[self.attachments[j]].append(j)
         return result
     
+
+    @property
+    def parent_vec(self):
+        result = np.empty(self.n_nodes, dtype=int)
+        for node in self.nodes:
+            result[node.ID] = -1 if node.isroot else node.parent.ID
+        return result
+    
+    
+    @parent_vec.setter
+    def parent_vec(self, parent_vec):
+        assert(len(parent_vec) == self.n_nodes)
+        for node in self.nodes:
+            parent_id = parent_vec[node.ID]
+            if self.n_cells <= parent_id < self.n_nodes:
+                node.assign_parent(self.nodes[parent_id])
+            else:
+                node.assign_parent(None)
+                self.root = node
+    
+
+    @property
+    def linkage_matrix(self):
+        '''
+        The matrix is in the same form as the one given by scipy.cluster.hierarchy.linkage
+        Except for the leaves, cluster index is generally not the same as the ID of the node that represents the cluster
+        '''
+        result = np.empty((self.n_cells - 1, 4))
+        heights = np.zeros(self.n_nodes) # height of the cluster node, equal to distance between the two children clusters
+        n_leaves = np.ones(self.n_nodes) # number of cells in a cluster
+        clusters = np.empty(self.n_nodes, dtype=int) # maps node ID to cluster
+        clusters[:self.n_cells] = np.arange(self.n_cells, dtype=int) # the first N clusters are single cells
+
+        i = 0 # counter for the merge operation
+        for node in self.root.reverse_DFS:
+            if not node.isleaf:
+                clusters[node.ID] = self.n_cells + i
+                cluster1, cluster2 = clusters[node.children[0].ID], clusters[node.children[1].ID] # the two clusters to be merged
+                result[i,:2] = cluster1, cluster2
+                heights[self.n_cells + i] = max(heights[cluster1], heights[cluster2]) + 1
+                n_leaves[self.n_cells + i] = n_leaves[cluster1] + n_leaves[cluster2]
+                i += 1
+        result[:,2] = heights[self.n_cells:]
+        result[:,3] = n_leaves[self.n_cells:]
+
+        return result
+
     
     @property 
     def dist_matrix(self): 
@@ -206,21 +259,21 @@ class CellTree:
         dg = graphviz.Digraph(filename = filename)
         
         mutations = self.mutations
-        for node in self.nodes: 
-            if node.isleaf: 
+        for node in self.nodes:
+            if node.isleaf:
                 dg.node(str(node.ID), shape = 'circle')
-            else: 
+            else:
                 dg.node(str(node.ID), shape = 'circle', style = 'filled', color = 'gray')
             
-            if mutations[node.ID]: 
+            if mutations[node.ID]:
                 edge_label = 'm' + ','.join([str(j) for j in mutations[node.ID]])
-            else: 
+            else:
                 edge_label = ''
             
-            if node.isroot: 
+            if node.isroot:
                 dg.node('dummy', label = '', shape = 'point')
                 dg.edge('dummy', str(node.ID), label = edge_label)
-            else: 
+            else:
                 dg.edge(str(node.parent.ID), str(node.ID), label = edge_label)
         
         return dg
@@ -229,19 +282,16 @@ class CellTree:
 
 
 class MutationTree: 
-    def __init__(self, n_cells = 0, n_mut = 0, cell_tree = None): 
+    def __init__(self, n_mut = 0, cell_tree = None): 
         if cell_tree is None: 
-            self.n_cells = n_cells
             self.n_mut = n_mut
         else: 
-            self.n_cells = cell_tree.n_cells
             self.n_mut = cell_tree.n_mut
         
         self.nodes = [TreeNode(i) for i in range(self.n_mut + 1)]
         if cell_tree is not None: 
             self.fit_structure(cell_tree)
         
-        self.node_joints = np.empty((self.n_cells, self.n_nodes)) # joint likelihood of cell i when attached to node j
         self.attachments = None
         
         self.last_move = None # 0 = prune & attach, 1 = node swap
@@ -251,6 +301,14 @@ class MutationTree:
     @property
     def n_nodes(self): 
         return len(self.nodes)
+    
+
+    @property
+    def n_cells(self):
+        if self.attachments is None:
+            return 0
+        else:
+            return len(self.attachments)
     
     
     @property
@@ -270,6 +328,10 @@ class MutationTree:
     @property
     def dist_matrix(self): 
         pass # to be implemented
+
+
+    def copy(self):
+        return copy.deepcopy(self)
     
     
     def random_structure(self): 
@@ -306,11 +368,6 @@ class MutationTree:
             # mutations that are not assigned in the cell tree (i.e. CellTree.attachment[j] out of range)
             if node.parent is None: 
                 node.assign_parent(self.root) 
-    
-    
-    def fit(self, likelihoods1 = None, likelihoods2 = None): 
-        self.refresh_node_joints()
-        self.attach_cells()
     
     
     def propose_prune_attach(self): 

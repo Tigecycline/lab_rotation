@@ -40,7 +40,7 @@ def single_read_likelihood(n_ref, n_alt, genotype, f = 0.95, omega = 100, log_sc
         return betabinom.pmf(n_ref, n_ref + n_alt, alpha, beta)
 
     
-def likelihood_matrices(ref, alt, gt1, gt2, n_threads = 4):
+def likelihood_matrices(ref, alt, gt1, gt2):
     '''
     likelihoods1[i,j]: likelihood of cell i having gt1 at locus j
     likelihoods2[i,j]: likelihood of cell i having gt2 at locus j
@@ -50,14 +50,10 @@ def likelihood_matrices(ref, alt, gt1, gt2, n_threads = 4):
     likelihoods1 = np.empty((n_cells, n_mut)) # likelihood of cell i not mutated at locus j
     likelihoods2 = np.empty((n_cells, n_mut)) # likelihood of cell i mutated at locus j
     
-    pool = mp.Pool(n_threads)
-    def fill(i,j): 
-        likelihoods1[i,j] = single_read_likelihood(ref[i,j], alt[i,j], gt1[j])
-        likelihoods2[i,j] = single_read_likelihood(ref[i,j], alt[i,j], gt2[j])
-    
     for i in range(n_cells): 
         for j in range(n_mut): 
-            pool.apply_async(fill(i,j))
+            likelihoods1[i,j] = single_read_likelihood(ref[i,j], alt[i,j], gt1[j])
+            likelihoods2[i,j] = single_read_likelihood(ref[i,j], alt[i,j], gt2[j])
     return likelihoods1, likelihoods2
 
 
@@ -95,7 +91,7 @@ def k_mut_likelihoods(ref, alt, gt1, gt2):
     return k_in_first_n[N, :]
 
 
-def composition_priors(n_cells, genotype_freq, mut_prop):
+def composition_priors(n_cells, genotype_freq = {'R': 1/4, 'H': 1/2, 'A': 1/4}, mut_prop = 0.5):
     '''
     genotype_freq: prior probabilities of the root having genotype R, H or A
     mut_prop: prior for the proportion of mutated loci
@@ -164,7 +160,7 @@ def locus_posteriors(ref, alt, priors, single_cell_mut = False):
     return posteriors
 
 
-def mut_type_posteriors(ref, alt, genotype_freq = {'R': 1/4, 'H': 1/2, 'A': 1/4}, mut_prop = 0.5, single_cell_mut = False, n_threads = 4): 
+def mut_type_posteriors(ref, alt, genotype_freq = {'R': 1/4, 'H': 1/2, 'A': 1/4}, mut_prop = 0.5, log_space = False, n_threads = 4): 
     n_cells, n_loci = ref.shape
     # assert(n_loci == alt.shape[0] and n_cells == alt.shape[1])
     # assert(df_ref.index.size == n_loci)
@@ -177,7 +173,8 @@ def mut_type_posteriors(ref, alt, genotype_freq = {'R': 1/4, 'H': 1/2, 'A': 1/4}
     result = [pool.apply_async(locus_posteriors, (ref[:,j], alt[:,j], priors)) for j in range(n_loci)]
     result = np.stack([r.get() for r in result])
 
-    result = np.exp(result) # convert back to linear space
+    if not log_space:
+        result = np.exp(result) # convert back to linear space
     return result
 
 

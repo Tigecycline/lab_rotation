@@ -1,5 +1,6 @@
 .ipynb_checkpoints/*
 __pycache__/*
 test.py
+figures.ipynb
 test_results/*
 figures/*

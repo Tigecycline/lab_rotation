@@ -11,16 +11,22 @@ from utilities import *
 
 
 
-def test_mutation_detection(n_cells, n_loci, mut_prop, n_tests = 5, sampler = None, fnames = None): 
+def test_mutation_detection(n_cells, n_loci, mut_prop, tp_threshold = 0, n_tests = 5, sampler = None, outdir = None): 
     sampler_name = 'def' if sampler is None else 'oth' # def = default sampler, oth  = other samplers
     n_mut = round(n_loci * mut_prop)
     print('Mutation detection test with %i cells and the %s coverage sampler:' % (n_cells, sampler_name))
+    tp_low = tp_threshold + 1
+    tp_high = n_cells - tp_threshold
 
     tpr = np.empty((n_tests, n_loci + 1))
     fpr = np.empty((n_tests, n_loci + 1))
     tpr_alt = np.empty(n_tests)
     fpr_alt = np.empty(n_tests)
     sorted_posteriors = np.empty((n_tests, n_loci))
+    if tp_low is None:
+        tp_low = 2
+    if tp_high is None:
+        tp_high = n_cells - 1
 
     dg = DataGenerator(n_cells, n_loci, coverage_sampler = sampler)
     for i in range(n_tests): 
@@ -37,8 +43,14 @@ def test_mutation_detection(n_cells, n_loci, mut_prop, n_tests = 5, sampler = No
         
         tp = np.empty(n_loci + 1)
         fp = np.empty(n_loci + 1)
-        # real positives: loci that are mutated and the mutation affects at least two cells
-        pos_real = np.logical_and(dg.gt1 != dg.gt2, dg.tree.attachments >= dg.n_cells) 
+        # real positives: loci that affects at least tp_low cells and at most tp_high cells
+        pos_real = [False] * n_loci
+        for j in range(n_loci):
+            if dg.gt1[j] == dg.gt2[j]:
+                continue
+            n_affected = len([1 for _ in dg.tree.nodes[dg.tree.attachments[j]].leaves])
+            if n_affected >= tp_low and n_affected <= tp_high:
+                pos_real[j] = True
         # all loci are positive if threshold is zero
         n_pos_real = np.sum(pos_real)
         n_neg_real = n_loci - n_pos_real
@@ -65,14 +77,55 @@ def test_mutation_detection(n_cells, n_loci, mut_prop, n_tests = 5, sampler = No
         fpr_alt[i] = fp_alt / n_neg_real
     
     print('All tests finished, saving results...')
-    if fnames is None: 
-        data_names = ['sortedP', 'TPR', 'FPR', 'altTPR', 'altFPR']
-        fnames = ['mut_detection_%s_%ic_%im_%if_%s' % (dn, n_cells, n_mut, n_loci - n_mut, sampler_name) for dn in data_names]
-    np.save('./test_results/' + fnames[0], sorted_posteriors) 
-    np.save('./test_results/' + fnames[1], tpr) # true positive rates
-    np.save('./test_results/' + fnames[2], fpr) # false positive rates
-    np.save('./test_results/' + fnames[3], tpr_alt) # true positive rate, alternative method
-    np.save('./test_results/' + fnames[4], fpr_alt) # false positive rate, alternative method
+    if outdir is None:
+        outdir = './test_results/mut_detection_%ic_tp%i_%s/' % (n_cells, tp_threshold, sampler_name)
+    Path(outdir).mkdir(parents=True, exist_ok=True)
+    np.save(outdir + 'sortedP.npy', sorted_posteriors) 
+    np.save(outdir + 'TPR.npy', tpr) # true positive rates
+    np.save(outdir + 'FPR.npy', fpr) # false positive rates
+    np.save(outdir + 'altTPR.npy', tpr_alt) # true positive rate, alternative method
+    np.save(outdir + 'altFPR.npy', fpr_alt) # false positive rate, alternative method
+    print('Done')
+
+    
+def test_sensitivity(n_cells, n_tests, mut_type = None, threshold = 0.5, outdir = None):
+    print('Sensitivity test with %i cells and mutation type %s: ' % (n_cells, mut_type))
+    if mut_type is None:
+        mut_type = 'RH'
+    gt1, gt2 = mut_type[0], mut_type[1]
+
+    # column 0 = reported as positive, column 1 = correct genotype combination, column 3 = correct direction
+    result = np.zeros((n_cells - 2, 3)) 
+
+    dg = DataGenerator(coverage_sampler = coverage_sampler())
+    priors = composition_priors(n_cells)
+    for i in range(n_cells-2):
+        for j in range(n_tests):
+            print('Running test %i/%i with %i/%i cells affected' % (j, n_tests, i+2, n_cells), end = '\r')
+            affected = np.random.choice(n_cells, size = i+2, replace = False)
+            genotypes = np.full(n_cells, gt1, dtype = str)
+            genotypes[affected] = gt2
+            ref, alt = np.empty(n_cells), np.empty(n_cells)
+            for k in range(n_cells):
+                ref[k], alt[k] = dg.generate_single_read(genotypes[k])
+            posteriors = locus_posteriors(ref, alt, priors)
+            posteriors = np.exp(posteriors)
+            
+            if np.sum(posteriors[3:]) <= threshold:
+                continue
+            # mutation reported
+            result[i,0] += 1
+            gt1_inferred, gt2_inferred = ['RH', 'HA', 'HR', 'AH'][np.argmax(posteriors[3:])]
+            if {gt1_inferred, gt2_inferred} == {gt1, gt2}: # mutation type correct
+                result[i,1] += 1
+            if (gt1_inferred, gt2_inferred) == (gt1, gt2): # mutation direction correct
+                result[i,2] += 1
+    
+    print('All tests finished, saving results...')
+    if outdir is None:
+        outdir = './test_results/number_affected_%ic/' % n_cells
+    Path(outdir).mkdir(parents=True, exist_ok=True)
+    np.save(outdir + mut_type + '.npy', result / n_tests)
     print('Done')
 
 
@@ -88,14 +141,14 @@ def test_space_swap(n_cells, n_loci, mut_prop = 0.5, n_tests = 5, outdir = None)
     runtime = np.empty((n_tests, n_settings))
     
     dg = DataGenerator(n_cells, n_loci, coverage_sampler = coverage_sampler())
-    for i in range(n_tests): 
+    for i in range(n_tests):
         # generate new tree & data for each test
-        dg.random_tree() 
+        dg.random_tree()
         dg.random_mutations(mut_prop = mut_prop)
         ref_raw, alt_raw = dg.generate_reads()
         
         # infer mutation types & get likelihood matrices
-        ref, alt, gt1, gt2 = filter_mutations(ref_raw, alt_raw)
+        ref, alt, gt1, gt2 = filter_mutations(ref_raw, alt_raw, method = 'threshold', t = 0.5)
         likelihoods1, likelihoods2 = likelihood_matrices(ref, alt, gt1, gt2)
         
         # likelihood of true tree
@@ -169,7 +222,7 @@ def test_thresholds(n_cells, n_loci, mut_prop = 0.5, sampler = None, n_tests = 5
             
             runtime_irr[i,j] = time() - start
             dist_irr[i,j] = path_len_dist(optz.ct, dg.tree)
-        print('Test %i finished.')
+        print('Test %i finished.' % i)
     
     pool = mp.Pool(4)
     for i in range(n_tests):
@@ -267,11 +320,15 @@ def test_random_dist(n_cells = None, n_tests = 100, fname = None):
 
 
 if __name__ == '__main__':
-    #alt_sampler = coverage_sampler()
-    #test_mutation_detection(25, 200, 0.5, n_tests = 100)
-    #test_mutation_detection(400, 200, 0.5, n_tests = 100)
-    #test_mutation_detection(25, 200, 0.5, n_tests = 100, sampler = alt_sampler)
-    #test_mutation_detection(400, 200, 0.5, n_tests = 100, sampler = alt_sampler)
+    test_mutation_detection(25, 200, 0.5, tp_threshold = 5, n_tests = 100)
+    test_mutation_detection(400, 200, 0.5, tp_threshold = 5, n_tests = 100)
+    test_mutation_detection(25, 200, 0.5, tp_threshold = 5, n_tests = 100, sampler = coverage_sampler())
+    test_mutation_detection(400, 200, 0.5, tp_threshold = 5, n_tests = 100, sampler = coverage_sampler())
+
+    #test_sensitivity(50, 100, 'RH')
+    #test_sensitivity(50, 100, 'HA')
+    #test_sensitivity(50, 100, 'HR')
+    #test_sensitivity(50, 100, 'AH')
     
     #test_space_swap(n_cells = 50, n_loci = 200, n_tests = 100)
     #test_space_swap(n_cells = 50, n_loci = 400, n_tests = 100)
@@ -279,6 +336,6 @@ if __name__ == '__main__':
 
     #test_thresholds(50, 400, 0.5, sampler = coverage_sampler(), n_tests = 100)
 
-    test_reversibility(50, 100, 100)
+    #test_reversibility(50, 100, 100)
 
     #test_random_dist()

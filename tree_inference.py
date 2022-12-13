@@ -18,6 +18,9 @@ class TreeOptimizer:
         '''
         assert(likelihoods1.shape == likelihoods2.shape)
         self.n_cells, self.n_mut = likelihoods1.shape
+        if self.n_cells < 3 or self.n_mut < 2:
+            print('[TreeOptimizer.fit] ERROR: cell tree / mutation tree too small, nothing to explore')
+            return
         
         self.likelihoods1, self.likelihoods2 = likelihoods1.copy(), likelihoods2.copy()
         self._decimals = sig_dig - int(np.log10(np.abs(np.sum(likelihoods1)))) # round tree likelihoods to this precision
@@ -28,9 +31,9 @@ class TreeOptimizer:
         
         self.f1t2 = [True] * self.n_mut # direction of mutation j, True if from gt1 to gt2, False otherwise
         
-        self.ct = CellTree(self.n_cells, self.n_mut)
+        self.ct = CellTree(self.n_cells)
         self.ct.randomize()
-        self.mt = MutationTree(self.n_cells, self.n_mut)
+        self.mt = MutationTree(self.n_mut)
         
         # TBC: come up with better attribute names (or better implementation)
         self.ct_LLR = np.zeros((self.ct.n_nodes, self.n_mut)) # [i,j] log-likelihood ratio of mutation j attached to edge above cell i in the cell tree
@@ -45,10 +48,12 @@ class TreeOptimizer:
             self.reversible = []
         elif reversible == True: 
             self.reversible = [j for j in range(self.n_mut)]
-        else: 
+        else: # list / array
             self.reversible = reversible
         
+        # adapt mt to ct, not necessary for optimization
         self.update_ct()
+        self.mt_L[:,self.mt.root.ID] = np.sum(self.likelihoods1, axis = 1) # need this because update of ct can change root likelihood
         self.mt.fit_structure(self.ct)
         self.update_mt()
     
@@ -148,6 +153,8 @@ class TreeOptimizer:
         
         while n_steps < timeout and n_proposed < convergence: 
             n_steps += 1
+            if print_info:
+                print('[TreeOptimizer.ct_hill_climb] step %i/%i' % (n_steps, timeout), end='\r')
             move_type = np.random.choice(2, p = weights)
             
             if move_type == 0: # prune a subtree & attach to another node 
@@ -190,6 +197,8 @@ class TreeOptimizer:
         
         while n_steps < timeout and n_proposed < convergence: 
             n_steps += 1
+            if print_info:
+                print('[TreeOptimizer.mt_hill_climb] step %i/%i' % (n_steps, timeout), end='\r')
             move_type = np.random.choice(2, p = weights)
             
             if move_type == 0: # prune a subtree & attach to another node 
@@ -250,7 +259,7 @@ class TreeOptimizer:
             space_counter += 1
             if space_counter > n_space_max: # monitor and cut infinite loops
                 print('[TreeOptimizer.optimize] WARNING: maximal number (%i) of spaces reached' % n_space_max)
-                return
+                break
             # 0 = cell tree space, 1 = mutation tree space
             current_space = spaces[space_idx]
             if current_space == 'c': 
@@ -271,8 +280,8 @@ class TreeOptimizer:
             if new_history[-1] == self.likelihood_history[-1]: 
                 converged[space_idx] = True
             elif new_history[-1] < self.likelihood_history[-1]:
-                print('[TreeOptimizer.optimize] ERROR: likelihood decreased')
-                return
+                print('[TreeOptimizer.optimize] WARNING: likelihood decreased, current space %s, space count %i' % (current_space, n_spaces))
+                break
             else:
                 converged[space_idx] = False
             

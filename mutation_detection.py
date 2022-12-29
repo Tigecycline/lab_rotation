@@ -9,20 +9,14 @@ from utilities import *
 
 def single_read_likelihood(n_ref, n_alt, genotype, f = 0.95, omega = 100, log_scale = True): 
     ''' 
-    likelihood of reference and alternative read counts at a specific cell and locus, given the corresponding genotype
-    '''
-    '''
-    For python 3.10 consider this: 
-    match genotype:
-        case 'R':
-            alpha = f * omega
-            beta = omega - alpha
-        case 'A':
-            alpha = (1 - f) * omega
-            beta = omega - alpha
-        case 'H':
-            alpha = omega/4
-            beta = omega/4
+    Arguments
+    n_ref: number of ref reads
+    n_alt: number of alt reads
+    genotype: self-explanatory
+    f: optional, 
+
+    Return
+    likelihood of ref and alt read counts, given the genotype
     '''
     if genotype == 'R':
         alpha = f * omega

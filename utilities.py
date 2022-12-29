@@ -69,3 +69,22 @@ def coverage_sampler(ref = None, alt = None):
         ref, alt = read_data('./Data/glioblastoma_BT_S2/ref.csv', './Data/glioblastoma_BT_S2/alt.csv')
     coverages = ref.flatten() + alt.flatten()
     return lambda: np.random.choice(coverages)
+
+
+def log_n_fbtrees(n):
+    ''' number of full binary trees with n labelled leaves '''
+    assert(n >= 1)
+    if n == 1:
+        return 0 # number of one-leaf full binary trees defined as 1
+    else:
+        return loggamma(2*n - 2) - (n-2) * np.log(2) - loggamma(n-1)
+
+
+
+def shannon_info(n_cells, n_affected):
+    assert(n_cells > 0 and n_cells >= n_affected)
+    
+    if n_affected < 1:
+        return 0
+    else:
+        return log_n_fbtrees(n_cells) - log_n_fbtrees(n_affected) - log_n_fbtrees(n_cells - n_affected + 1)

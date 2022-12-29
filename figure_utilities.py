@@ -12,14 +12,14 @@ def heterozygosity_map(chromosome, fname = None):
     ref, alt = read_data('./Data/glioblastoma_BT_S2/ref.csv', './Data/glioblastoma_BT_S2/alt.csv', chromosome)
     
     ref_proportion = (ref + 1) / (ref + alt + 2) # add a dummy count to both ref and alt to avoid division by 0
-    alpha = 2 * np.arctan(ref + alt) / np.pi # hide loci without enough counts
+    alpha = np.array(ref + alt != 0, dtype=float) # hide loci without enough counts
     
     plt.figure(figsize=(12,8), dpi = 300)
     plt.imshow(ref_proportion, cmap = 'viridis', vmin = 0., vmax = 1., alpha = alpha) 
     # "viridis": yellow for 1, purple for 0, green/blue for 0.5 (https://matplotlib.org/3.5.1/tutorials/colors/colormaps.html)
-    plt.title(chromosome + ' heterozygosity', fontsize = 17)
-    plt.xlabel('locus', fontsize = 17)
-    plt.ylabel('cell', fontsize = 17)
+    #plt.title(chromosome + ' heterozygosity')
+    plt.xlabel('locus')
+    plt.ylabel('cell')
     plt.tight_layout()
     if fname is None:
         fname = chromosome + '_heterozygosity.png'

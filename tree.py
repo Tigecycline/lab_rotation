@@ -15,7 +15,9 @@ class CellTree:
         self.nodes = [TreeNode(i) for i in range(2 * self.n_cells - 1)]
         self.root = None
         
-        self.attachments = None
+        self.attachments = [] # locations of the mutations
+        # If mutation j is attached to some edge, then attachments[j] is the ID of the child node of that edge. 
+        # Otherwise, attachments[j] is -1. 
         
         self.last_move = None # 0 = prune & insert, 1 = subtree swap
         self.undo_args = None # information of the move required to undo it
@@ -29,10 +31,8 @@ class CellTree:
 
     @property
     def n_mut(self):
-        if self.attachments is None:
-            return 0
-        else:
-            return len(self.attachments)
+        ''' number of attached mutations '''
+        return len(self.attachments)
 
     
     @property
@@ -47,6 +47,10 @@ class CellTree:
 
     @property
     def parent_vec(self):
+        '''
+        An array in which the i-th entry is the ID of the parent of node i
+        If node i has no parent (i.e. is root), the entry is -1
+        '''
         result = np.empty(self.n_nodes, dtype=int)
         for node in self.nodes:
             result[node.ID] = -1 if node.isroot else node.parent.ID
@@ -55,6 +59,10 @@ class CellTree:
     
     @parent_vec.setter
     def parent_vec(self, parent_vec):
+        '''
+        Rearranges the tree according to provided parent vector
+        Root is indicated by -1
+        '''
         assert(len(parent_vec) == self.n_nodes)
         for node in self.nodes:
             parent_id = parent_vec[node.ID]
@@ -68,7 +76,8 @@ class CellTree:
     @property
     def linkage_matrix(self):
         '''
-        The matrix is in the same form as the one given by scipy.cluster.hierarchy.linkage
+        Returns a matrix that can be used to draw dendrogram with other packages
+        It is in the same form as the one given by scipy.cluster.hierarchy.linkage
         Except for the leaves, cluster index is generally not the same as the ID of the node that represents the cluster
         '''
         result = np.empty((self.n_cells - 1, 4))
@@ -94,7 +103,7 @@ class CellTree:
     
     @property 
     def dist_matrix(self): 
-        # TBC: find more efficient algorithm 
+        ''' Distance matrix of all leaves '''
         result = - np.ones((self.n_cells, self.n_nodes), dtype = int)
         np.fill_diagonal(result, 0)
         for node in self.root.reverse_DFS: 
@@ -119,12 +128,11 @@ class CellTree:
     
     def random_subtree(self, selected, internal_idx): 
         '''
-        Create a random binary tree on selected nodes 
-        selected: indices of the selected nodes ("leaves" of the random subtree)
-        internal_idx: nodes from this index are used as internal nodes of the subtree
+        Creates a random binary tree using selected leaves and internal nodes
+        [Arguments]
+            selected: indices of the selected nodes ("leaves" of the random subtree)
+            internal_idx: nodes from this index are used as internal nodes of the subtree
         '''
-        # TBC: use a copy of selected instead of changing it directly
-        #selected = selected.copy()
         for i in range(len(selected) - 1): 
             children_idx = np.random.choice(selected, size = 2, replace = False)
             # TBC: clear existing children of the parent 
@@ -140,13 +148,18 @@ class CellTree:
     
     def randomize(self): 
         '''
-        Shuffle the entire tree
+        Shuffles the entire tree
         '''
         self.random_subtree([i for i in range(self.n_cells)], self.n_cells)
         self.root = self.nodes[-1]
     
     
-    def fit_structure(self, mutation_tree): 
+    def fit_structure(self, mutation_tree):
+        '''
+        Rearranges the tree according to provided mutation tree
+        NB The cell lineage tree corresponding to a mutation tree is usually NOT unique
+        If multiple structures are available, a random one is picked
+        '''
         mrca = np.ones(mutation_tree.n_nodes, dtype = int) * -1 # most recent common ancestor of cells below a mutation node; -1 means no cell has been found below this mutation
         
         current_idx = self.n_cells
@@ -168,7 +181,8 @@ class CellTree:
         self.root.assign_parent(None)
     
     
-    def propose_prune_insert(self): 
+    def propose_prune_insert(self):
+        ''' Returns random valid arguments for the prune_insert method '''
         subrootID = randint_with_exclude(self.n_nodes, [self.root.ID])
         # subroot: root of the pruned subtree
         subroot = self.nodes[subrootID]
@@ -255,7 +269,8 @@ class CellTree:
         self.last_move = None
     
     
-    def to_graphviz(self, filename = None): 
+    def to_graphviz(self, filename = None):
+        ''' Returns a graphviz Digraph object corresponding to the tree '''
         dg = graphviz.Digraph(filename = filename)
         
         mutations = self.mutations
@@ -390,6 +405,7 @@ class MutationTree:
     
     
     def prune_attach(self, subrootID, targetID):
+        # prune the subtree with root subrootID, attach it to the edge targetID
         self.last_move = 0
         subroot, target = self.nodes[subrootID], self.nodes[targetID]
         self.undo_args = [subrootID, subroot.parent.ID]

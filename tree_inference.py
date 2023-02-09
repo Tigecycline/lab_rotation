@@ -13,8 +13,15 @@ class TreeOptimizer:
     
     def fit(self, likelihoods1, likelihoods2, sig_dig = 10, reversible = False): 
         ''' 
-        In case the mutations are reversible (i.e. mutation direction unknown), 
-        the two likelihood matrices will be modified during optimization 
+        Gets ready to run optimization using provided likelihoods.
+        Before calling this function, it is assumed that for each locus, the two genotypes gt1 and gt2 are known.
+        [Arguments]
+            likelihoods1: 2D array in which entry [i,j] represents the likelihood of cell i having gt1 at locus j
+            likelihoods2: 2D array in which entry [i,j] represents the likelihood of cell i having gt2 at locus j
+            sig_dig: number of significant digits to use when calculating joint probability
+            reversible: either an array that indicates whether each of the mutations is reversible (i.e. direction unknown), 
+                or a boolean value that applies to all loci. 
+                When a mutation is not reversible, the direction is assumed to be from gt1 to gt2.
         '''
         assert(likelihoods1.shape == likelihoods2.shape)
         self.n_cells, self.n_mut = likelihoods1.shape
@@ -60,7 +67,7 @@ class TreeOptimizer:
     
     @property
     def ct_joint(self): 
-        ''' joint likelihood of the cell tree with attached mutations '''
+        ''' joint likelihood of the cell tree, with attached mutations '''
         # sum seems faster than numpy.sum when passing a list
         result = sum([self.ct_LLR[self.ct.attachments[j], j] for j in range(self.n_mut) if self.ct.attachments[j] >= 0]) + sum(self.ct_L1)
         return round(result, self._decimals)
@@ -68,27 +75,28 @@ class TreeOptimizer:
     
     @property
     def mt_joint(self): 
-        ''' joint likelihood of the mutation tree with attached cells '''
+        ''' joint likelihood of the mutation tree, with attached cells '''
         result = sum([self.mt_L[i, self.mt.attachments[i]] for i in range(self.n_cells)])
         return round(result, self._decimals)
     
     
     @property
-    def ct_mean_likelihood(self): 
+    def ct_mean_likelihood(self):
         return self.ct_joint / self.likelihoods1.size
     
     
     @property
-    def mt_mean_likelihood(self): 
+    def mt_mean_likelihood(self):
         return self.mt_joint / self.likelihoods1.size
     
     
     @property
-    def mean_history(self): 
+    def mean_history(self):
         return self.likelihood_history / self.likelihoods1.size
     
     
-    def flip_direction(self, j): 
+    def flip_direction(self, j):
+        ''' Reverses the direction of a mutation j by exchanging corresponding columns in likelihoods1 and likelihoods2 '''
         self.f1t2[j] = not self.f1t2[j]
         temp = self.likelihoods1[:,j].copy()
         self.likelihoods1[:,j] = self.likelihoods2[:,j]
@@ -97,55 +105,57 @@ class TreeOptimizer:
         self.ct_L1[j], self.ct_L2[j] = self.ct_L2[j], self.ct_L1[j]
     
     
-    def update_ct_likelihoods(self): 
-        ''' Recalculate ct_LLR according to current structure of cell tree '''
-        for node in self.ct.root.reverse_DFS: 
+    def update_ct_likelihoods(self):
+        ''' Recalculates ct_LLR according to current structure of cell tree '''
+        for node in self.ct.root.reverse_DFS:
             if node.isleaf: # nothing to be done for leaves
                 continue
             children_ID = [child.ID for child in node.children]
             self.ct_LLR[node.ID,:] = np.sum(self.ct_LLR[children_ID,:], axis = 0) 
     
     
-    def update_mt_likelihoods(self): 
-        ''' Recalculate mt_L according to current structure of mutation tree '''
-        DFS = self.mt.root.DFS
-        next(DFS) # skip the root, since likelihoods at root are known
-        for node in DFS: 
+    def update_mt_likelihoods(self):
+        ''' Recalculates mt_L according to current structure of mutation tree '''
+        mt_DFS = self.mt.root.DFS
+        next(mt_DFS) # skip the root, since likelihoods at root are known
+        for node in mt_DFS:
             self.mt_L[:,node.ID] = self.mt_L[:,node.parent.ID] + self.ct_LLR[:self.n_cells, node.ID]
     
     
-    def ct_attach_mutations(self): 
+    def ct_attach_mutations(self):
+        '''  '''
         self.ct.attachments = np.argmax(self.ct_LLR, axis = 0) # when not flipped
         
         # for reversible mutations, check if the inverse mutation has better likelihood
-        for j in self.reversible: 
+        for j in self.reversible:
             alt_attachment = np.argmin(self.ct_LLR[:,j]) # when flipped
-            if self.ct_L1[j] + self.ct_LLR[self.ct.attachments[j], j] < self.ct_L2[j] - self.ct_LLR[alt_attachment, j]: 
+            if self.ct_L1[j] + self.ct_LLR[self.ct.attachments[j], j] < self.ct_L2[j] - self.ct_LLR[alt_attachment, j]:
                 self.flip_direction(j)
                 self.ct.attachments[j] = alt_attachment
         
         # if best attachment still worse than L1, we want the mutation to attach nowhere
-        for j in range(self.n_mut): 
-            if self.ct_LLR[self.ct.attachments[j], j] < 0: 
+        for j in range(self.n_mut):
+            if self.ct_LLR[self.ct.attachments[j], j] < 0:
                 # any negative integer represents "outside of the tree", here we us -1
                 self.ct.attachments[j] = -1 
     
     
-    def mt_attach_cells(self): 
+    def mt_attach_cells(self):
         self.mt.attachments = np.argmax(self.mt_L, axis = 1)
     
     
-    def update_ct(self): 
+    def update_ct(self):
         self.update_ct_likelihoods()
         self.ct_attach_mutations()
     
     
-    def update_mt(self): 
+    def update_mt(self):
         self.update_mt_likelihoods()
         self.mt_attach_cells()
     
     
     def ct_hill_climb(self, convergence, timeout = np.inf, weights = [0.5, 0.5], print_info = True): 
+        ''' Optimzes the cell lineage tree using hill climbing approach '''
         n_proposed = 0 # number of failed moves
         n_steps = 0
         likelihood_history = [self.ct_joint]
@@ -189,7 +199,8 @@ class TreeOptimizer:
         return likelihood_history
         
         
-    def mt_hill_climb(self, convergence, timeout = np.inf, weights = [0.5, 0.5], print_info = True): 
+    def mt_hill_climb(self, convergence, timeout = np.inf, weights = [0.5, 0.5], print_info = True):
+        ''' Optimzes the mutation tree using hill climbing approach '''
         n_proposed = 0 # number of failed moves
         n_steps = 0
         likelihood_history = [self.mt_joint]
@@ -232,11 +243,14 @@ class TreeOptimizer:
     
     def optimize(self, print_info = True, strategy = 'hill climb', spaces = None, n_space_max = None): 
         '''
-        strategy: 'hill climb' is the only available option now 
-            it accepts moves that (strictly) increase the joint likelihood and rejects everything else 
-        spaces: spaces that will be searched and the order of the search
-            'c' = cell tree space, 'm' = mutation tree space
-            default is ['c','m'], i.e. start with cell tree and search both spaces
+        Optimizes the tree in all spaces.
+        [Arguments]
+            strategy: 'hill climb' is the only available option now 
+                it accepts moves that (strictly) increase the joint likelihood and rejects everything else 
+            spaces: spaces that will be searched and the order of the search
+                'c' = cell tree space, 'm' = mutation tree space
+                default is ['c','m'], i.e. start with cell tree and search both spaces
+            n_space_max: maximal allowed number of space swaps.
         '''
         ct_convergence = self.n_cells * self.convergence_factor
         mt_convergence = self.n_mut * self.convergence_factor * 2
@@ -292,10 +306,11 @@ class TreeOptimizer:
             space_idx = (space_idx + 1) % n_spaces
 
 
-def mean_likelihood(ct, likelihoods1, likelihoods2): 
-    '''
-    used to get the mean_likelihood of a knwon cell tree
-    '''
+
+
+# TODO?: move to utilities
+def mean_likelihood(ct, likelihoods1, likelihoods2):
+    ''' Returns the mean_likelihood of a knwon cell tree '''
     optz = TreeOptimizer()
     optz.fit(likelihoods2, likelihoods1, reversible = True)
     optz.ct = ct

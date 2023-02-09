@@ -54,34 +54,34 @@ def randint_with_exclude(n, exclude):
 
 
 def path_len_dist(tree1, tree2): 
-    ''' 
+    '''
     MSE between the (upper triangular) distance matrices of two cell/mutation trees 
-    NB The distance matrix of a cell tree does not include internal nodes
-    NB2 The denominator is the number of node pairs (ignoring order), not the matrix size
-    ''' 
+    NB The denominator is the size of the upper triangle, not the size of the matrix
+    '''
     dist_mat1, dist_mat2 = tree1.dist_matrix, tree2.dist_matrix
     denominator = (dist_mat1.size - dist_mat1.shape[0]) / 2
     return np.sum((dist_mat1 - dist_mat2)**2) / denominator
 
 
-def coverage_sampler(ref = None, alt = None): 
-    if ref is None or alt is None: 
+def coverage_sampler(ref = None, alt = None):
+    ''' Sample coverage from real data '''
+    if ref is None or alt is None:
         ref, alt = read_data('./Data/glioblastoma_BT_S2/ref.csv', './Data/glioblastoma_BT_S2/alt.csv')
     coverages = ref.flatten() + alt.flatten()
     return lambda: np.random.choice(coverages)
 
 
-def log_n_fbtrees(n):
-    ''' number of full binary trees with n labelled leaves '''
-    assert(n >= 1)
-    if n == 1:
-        return 0 # number of one-leaf full binary trees defined as 1
+def log_n_fbtrees(n_leaves):
+    ''' number of full binary trees with n labelled leaves, in log space '''
+    assert(n_leaves >= 1)
+    if n_leaves == 1:
+        return 0
     else:
-        return loggamma(2*n - 2) - (n-2) * np.log(2) - loggamma(n-1)
-
+        return loggamma(2*n_leaves - 2) - (n_leaves - 2) * np.log(2) - loggamma(n_leaves - 1)
 
 
 def shannon_info(n_cells, n_affected):
+    ''' Shannon information of a locus that affects exactly n_affected out of n_cells cells '''
     assert(n_cells > 0 and n_cells >= n_affected)
     
     if n_affected < 1:

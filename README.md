@@ -66,4 +66,34 @@ If needed, the mutation attachments can be obtained separately as `optz.ct.attac
 Finally, the history of likelihood (i.e. joint likelihood of the tree given the data) during the inference can be found as `optz.likelihood_history`.
 
 
+## How to Use the Data Generator
+There is a data generator class that uses the same model to generate random data.
+We can use the data generator to test the tree inference algorithm.
+To create a `DataGenerator` object, we need to specify the number of cells and loci.
+```
+from data_generator import DataGenerator
+dg = DataGenerator(50, 10)
+```
+Here, `50` is the number of loci and `10` is the number of cells.
+We can provide a (cell lineage) tree object to the DataGenerator, or we can tell it to generate a random tree, using the `random_tree` function.
+```
+dg.random_tree()
+```
+The tree is stored in `dg.tree` and can be converted to graphviz objects or parent vectors, just as described above.
+Note that the tree also contains all mutation locations.
+Next, we need to provide to it the real genotypes before and after the mutation at each locus.
+Again, this step can be randomized using the `random_mutations` function.
+```
+dg.random_mutations(mut_prop = 0.5, genotype_freq = [1/3, 1/3, 1/3])
+```
+When generating random genotypes, we need to specify the proportion of "real" mutations (i.e. proportion of loci that indeed contain a mutation), while the rest are "fake mutations" (for which the two genotypes are the same).
+In addition, we need to provide the frequency of the three genotypes in wildtype cells.
+
+Finally, we can get the random data by using the function `generate_reads`.
+```
+ref, alt = dg.generate_reads()
+```
+
+
+
 ## External Links

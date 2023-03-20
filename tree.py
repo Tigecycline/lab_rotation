@@ -10,7 +10,7 @@ from utilities import randint_with_exclude
 
 
 class CellTree: 
-    def __init__(self, n_cells = 1): 
+    def __init__(self, n_cells): 
         self.n_cells = n_cells 
         self.nodes = [TreeNode(i) for i in range(2 * self.n_cells - 1)]
         self.root = None
@@ -160,6 +160,8 @@ class CellTree:
         NB The cell lineage tree corresponding to a mutation tree is usually NOT unique
         If multiple structures are available, a random one is picked
         '''
+        assert(self.n_cells == mutation_tree.n_cells)
+
         mrca = np.ones(mutation_tree.n_nodes, dtype = int) * -1 # most recent common ancestor of cells below a mutation node; -1 means no cell has been found below this mutation
         
         current_idx = self.n_cells
@@ -297,15 +299,10 @@ class CellTree:
 
 
 class MutationTree: 
-    def __init__(self, n_mut = 0, cell_tree = None): 
-        if cell_tree is None: 
-            self.n_mut = n_mut
-        else: 
-            self.n_mut = cell_tree.n_mut
+    def __init__(self, n_mut): 
+        self.n_mut = n_mut
         
         self.nodes = [TreeNode(i) for i in range(self.n_mut + 1)]
-        if cell_tree is not None: 
-            self.fit_structure(cell_tree)
         
         self.attachments = None
         
@@ -357,6 +354,8 @@ class MutationTree:
         '''
         random_order: whether the order of mutations on the same edge is randomized
         '''
+        assert(self.n_mut == cell_tree.n_mut)
+
         for node in self.nodes: 
             node.assign_parent(None) # clear the current structure
         mrm = np.empty(cell_tree.n_nodes, dtype = int) # mrm for "most recent mutation"

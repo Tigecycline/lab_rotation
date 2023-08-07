@@ -3,8 +3,8 @@ import graphviz
 import copy
 from random import shuffle
 
-from tree_node import TreeNode
-from utilities import randint_with_exclude
+from .tree_node import TreeNode
+from .utilities import randint_with_exclude
 
 
 

@@ -5,15 +5,12 @@ The inferred tree takes the form of a (strictly) binary cell lineage tree, in wh
 
 
 ## Requirements to Run the Project
-The project in written in Python. To be able to run it, one needs at least the following packages (in alphabetical order):
+The project in written in Python. To be able to run it, one needs the following packages (in alphabetical order):
 - graphviz
 - numpy
 - pandas
 - scikit-learn
 - scipy
-
-Additionally, one package is required for plotting:
-- matplotlib
 
 
 ## How to Perform a Tree Inference
@@ -23,14 +20,14 @@ To perform tree inference, we first need to filter the read counts to identify p
 Then for the mutated loci, since the model assumes that each locus has at most 1 mutation (see the report for details), we need to infer the genotypes before and after this mutation.
 Let ref and alt be the two matrices containing reference and alternative read counts, the loci filtering and genotype inference can be achieved using the function `filter_mutations`.
 ```
-from mutation_detection.py import filter_mutations
+from tree_inference.mutation_detection import filter_mutations
 ref, alt, gt1, gt2 = filter_mutations(ref, alt, method = 'threshold', t = 0.5)
 ```
 Here, `ref` and `alt` are filtered to contain only columns (loci) that are considered mutated, while `gt1` and `gt2` are arrays containing the genotypes before and after mutation, respectively.
 Note that for the purpose of tree inference, the genotypes are not necessary, as long as we know the (log-)likelihoods of each cell having genotype 1 and 2.
 This can be obtained by the function `likelihood_matrices`.
 ```
-from mutation_detection.py import likelihood_matrices
+from tree_inference.mutation_detection import likelihood_matrices
 likelihoods1, likelihoods2 = likelihood_matrices(ref, alt, gt1, gt2)
 ```
 
@@ -38,7 +35,7 @@ With the data in appropriate form, we can now turn to the inference itself.
 The inference process is handled by the class TreeOptimzier.
 We should first create an instance of TreeOptimizer and prepare it for the inference by providing the filtered data via its `fit` member function.
 ```
-from tree_inference import TreeOptimizer
+from tree_inference.tree_optimizer import TreeOptimizer
 optz = TreeOptimizer()
 optz.fit(likelihoods1, likelihoods2, reversible = True)
 ```
@@ -71,7 +68,7 @@ There is a data generator class that uses the same model to generate random data
 We can use the data generator to test the tree inference algorithm.
 To create a `DataGenerator` object, we need to specify the number of cells and loci.
 ```
-from data_generator import DataGenerator
+from tree_inference.data_generator import DataGenerator
 dg = DataGenerator(50, 10)
 ```
 Here, `50` is the number of loci and `10` is the number of cells.

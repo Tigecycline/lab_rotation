@@ -1,8 +1,8 @@
 import numpy as np
 from tqdm.notebook import tqdm
 
-from mutation_detection import *
-from utilities import *
+from .mutation_detection import *
+from .utilities import *
 
 
 

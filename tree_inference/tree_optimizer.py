@@ -1,26 +1,26 @@
-from tree import *
-from mutation_detection import *
-from LOH_detection import *
+from .tree import *
+from .mutation_detection import *
+#from .LOH_detection import *
 
 
 
 
-class TreeOptimizer: 
+class TreeOptimizer:
     def __init__(self, convergence_factor = 5, timeout_factor = 20): 
         self.convergence_factor = convergence_factor
-        self.timeout_factor = timeout_factor     
+        self.timeout_factor = timeout_factor
     
     
     def fit(self, likelihoods1, likelihoods2, sig_dig = 10, reversible = False): 
-        ''' 
+        '''
         Gets ready to run optimization using provided likelihoods.
         Before calling this function, it is assumed that for each locus, the two genotypes gt1 and gt2 are known.
         [Arguments]
             likelihoods1: 2D array in which entry [i,j] represents the likelihood of cell i having gt1 at locus j
             likelihoods2: 2D array in which entry [i,j] represents the likelihood of cell i having gt2 at locus j
             sig_dig: number of significant digits to use when calculating joint probability
-            reversible: either an array that indicates whether each of the mutations is reversible (i.e. direction unknown), 
-                or a boolean value that applies to all loci. 
+            reversible: either an array that indicates whether each of the mutations is reversible (i.e. direction unknown),
+                or a boolean value that applies to all loci.
                 When a mutation is not reversible, the direction is assumed to be from gt1 to gt2.
         '''
         assert(likelihoods1.shape == likelihoods2.shape)

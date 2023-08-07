@@ -2,21 +2,21 @@ import numpy as np
 import multiprocessing as mp
 from scipy.stats import betabinom
 
-from utilities import *
+from .utilities import *
 
 
 
 
 def single_read_likelihood(n_ref, n_alt, genotype, f = 0.95, omega = 100, log_scale = True): 
     ''' 
-    Arguments
-    n_ref: number of ref reads
-    n_alt: number of alt reads
-    genotype: self-explanatory
-    f: optional, 
+    [Args]
+        n_ref: number of ref reads
+        n_alt: number of alt reads
+        genotype: self-explanatory
+        f: optional, 
 
-    Return
-    likelihood of ref and alt read counts, given the genotype
+    [Returns]
+        the likelihood of ref and alt read counts, given the genotype
     '''
     if genotype == 'R':
         alpha = f * omega
@@ -122,8 +122,9 @@ def composition_priors(n_cells, genotype_freq = {'R': 1/4, 'H': 1/2, 'A': 1/4}, 
 
 def locus_posteriors(ref, alt, priors, single_cell_mut = False): 
     '''
-    single_cell_mut: whether to consider a locus as mutated when the mutation affects one single cell
-    different mutation states: ['R', 'H', 'A', 'RH', 'HA', 'HR', 'AH']
+    [Args]
+        single_cell_mut: whether to consider a locus as mutated when the mutation affects one single cell
+        different mutation states: ['R', 'H', 'A', 'RH', 'HA', 'HR', 'AH']
     '''
     RH_likelihoods = k_mut_likelihoods(ref, alt, 'R', 'H')
     HA_likelihoods = k_mut_likelihoods(ref, alt, 'H', 'A')

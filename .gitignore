@@ -1,6 +1,6 @@
 .ipynb_checkpoints/*
+.vscode/*
 __pycache__/*
 test.py
 test_results/*
-figures/*
 workbench.ipynb

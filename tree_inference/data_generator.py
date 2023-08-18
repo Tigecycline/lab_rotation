@@ -1,5 +1,6 @@
 from .tree import *
 from scipy.stats import poisson, geom, betabinom
+import os, warnings
 
 
 
@@ -25,6 +26,18 @@ class DataGenerator:
         #else: 
         #    self.coverage_sampler = coverage_sampler
     
+
+    @property
+    def mut_indicator(self):
+        result = np.zeros((self.n_cells, self.n_loci), dtype=int)
+        for j in range(self.n_loci):
+            if self.gt1[j] == self.gt2[j]:
+                continue # not mutated
+            for node in self.tree.nodes[self.tree.attachments[j]].leaves:
+                result[node.ID, j] = True
+        
+        return result
+
     
     def random_mutations(self, mutated=None, mut_prop=1., genotype_freq=None):
         if genotype_freq is None:
@@ -93,11 +106,27 @@ class DataGenerator:
             genotypes[i,:] = np.where(mutated, self.gt2, self.gt1)
         
         # actual reads
-        ref = np.empty((self.n_cells, self.n_loci))
-        alt = np.empty((self.n_cells, self.n_loci))
+        ref = np.empty((self.n_cells, self.n_loci), dtype=int)
+        alt = np.empty((self.n_cells, self.n_loci), dtype=int)
         for i in range(self.n_cells):
             for j in range(self.n_loci):
                 ref[i,j], alt[i,j] = self.generate_single_read(genotypes[i,j], self.coverages[i,j])
         
         return ref, alt
         
+
+    def generate_comparison_data(self, size=100, mut_prop=0.75, path='./comparison_data/'):
+        #np.random.seed(0)
+        if not os.path.exists(path):
+            warnings.warn('Target path does not exist and will be created.', UserWarning)
+            os.makedirs(path)
+        
+        for i in range(size):
+            self.random_tree()
+            self.random_mutations(mut_prop=mut_prop, genotype_freq=[1/3, 1/3, 1/3])
+            ref, alt = self.generate_reads()
+            
+            np.savetxt(os.path.join(path, 'ref_%i' % i), ref.T, fmt='%i')
+            np.savetxt(os.path.join(path, 'alt_%i' % i), alt.T, fmt='%i')
+            np.savetxt(os.path.join(path, 'parent_vec_%i' % i), self.tree.parent_vec, fmt='%i')
+            np.savetxt(os.path.join(path, 'mut_indicator_%i' % i), self.mut_indicator.T, fmt='%i')

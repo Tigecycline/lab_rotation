@@ -65,7 +65,7 @@ def path_len_dist(tree1, tree2):
 
 def coverage_sampler(ref = None, alt = None):
     ''' Sample coverage from real data '''
-    if ref is None or alt is None:
+    if ref is None and alt is None:
         ref, alt = read_data('./Data/glioblastoma_BT_S2/ref.csv', './Data/glioblastoma_BT_S2/alt.csv')
     coverages = ref.flatten() + alt.flatten()
     return lambda: np.random.choice(coverages)

@@ -1,6 +1,6 @@
 from .tree import *
 from scipy.stats import poisson, geom, betabinom
-import os, warnings
+import os
 
 
 
@@ -115,10 +115,18 @@ class DataGenerator:
         return ref, alt
         
 
-    def generate_comparison_data(self, size=100, mut_prop=0.75, path='./comparison_data/'):
-        #np.random.seed(0)
-        if not os.path.exists(path):
-            warnings.warn('Target path does not exist and will be created.', UserWarning)
+    def generate_comparison_data(self, size=100, mut_prop=0.75, path='./comparison_data/', seed=None):
+        if seed is not None:
+            np.random.seed(seed)
+        if os.path.exists(path):
+            while True:
+                ans = input('Target path already exists. This can overwrite existing files. Do you want to continue? [Y/N] ')
+                match ans:
+                    case 'Y' | 'y' | 'Yes' | 'yes':
+                        break
+                    case 'N' | 'n' | 'No' | 'no':
+                        return
+        else:
             os.makedirs(path)
         
         for i in range(size):
@@ -126,7 +134,7 @@ class DataGenerator:
             self.random_mutations(mut_prop=mut_prop, genotype_freq=[1/3, 1/3, 1/3])
             ref, alt = self.generate_reads()
             
-            np.savetxt(os.path.join(path, 'ref_%i' % i), ref.T, fmt='%i')
-            np.savetxt(os.path.join(path, 'alt_%i' % i), alt.T, fmt='%i')
-            np.savetxt(os.path.join(path, 'parent_vec_%i' % i), self.tree.parent_vec, fmt='%i')
-            np.savetxt(os.path.join(path, 'mut_indicator_%i' % i), self.mut_indicator.T, fmt='%i')
+            np.savetxt(os.path.join(path, 'ref_%i.txt' % i), ref, fmt='%i')
+            np.savetxt(os.path.join(path, 'alt_%i.txt' % i), alt, fmt='%i')
+            np.savetxt(os.path.join(path, 'parent_vec_%i.txt' % i), self.tree.parent_vec, fmt='%i')
+            np.savetxt(os.path.join(path, 'mut_indicator_%i.txt' % i), self.mut_indicator, fmt='%i')

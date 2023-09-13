@@ -200,7 +200,7 @@ class TreeOptimizer:
         
         
     def mt_hill_climb(self, convergence, timeout = np.inf, weights = [0.5, 0.5], print_info = True):
-        ''' Optimzes the mutation tree using hill climbing approach '''
+        ''' Optimizes the mutation tree using hill climbing approach '''
         n_proposed = 0 # number of failed moves
         n_steps = 0
         likelihood_history = [self.mt_joint]

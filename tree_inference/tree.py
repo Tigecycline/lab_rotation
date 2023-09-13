@@ -271,16 +271,16 @@ class CellTree:
         self.last_move = None
     
     
-    def to_graphviz(self, filename = None):
+    def to_graphviz(self, filename=None, engine='dot', leaf_shape='circle', internal_shape='circle'):
         ''' Returns a graphviz Digraph object corresponding to the tree '''
-        dg = graphviz.Digraph(filename = filename)
+        dg = graphviz.Digraph(filename=filename, engine=engine)
         
         mutations = self.mutations
         for node in self.nodes:
             if node.isleaf:
-                dg.node(str(node.ID), shape = 'circle')
+                dg.node(str(node.ID), shape=leaf_shape)
             else:
-                dg.node(str(node.ID), shape = 'circle', style = 'filled', color = 'gray')
+                dg.node(str(node.ID), shape=internal_shape, style='filled', color='gray')
             
             if mutations[node.ID]:
                 edge_label = 'm' + ','.join([str(j) for j in mutations[node.ID]])
@@ -288,10 +288,10 @@ class CellTree:
                 edge_label = ''
             
             if node.isroot:
-                dg.node('dummy', label = '', shape = 'point')
-                dg.edge('dummy', str(node.ID), label = edge_label)
+                dg.node('dummy', label='', shape='point')
+                dg.edge('dummy', str(node.ID), label=edge_label)
             else:
-                dg.edge(str(node.parent.ID), str(node.ID), label = edge_label)
+                dg.edge(str(node.parent.ID), str(node.ID), label=edge_label)
         
         return dg
 
@@ -469,8 +469,8 @@ class MutationTree:
     #    subroot2.assign_parent(parent1)
     
     
-    def to_graphviz(self, filename = None): 
-        dg = graphviz.Digraph(filename = filename)
+    def to_graphviz(self, filename = None, engine='dot'): 
+        dg = graphviz.Digraph(filename = filename, engine=engine)
         
         dg.node(str(self.root.ID), label = 'root', shape = 'rectangle')
         for node in self.nodes[:-1]: 

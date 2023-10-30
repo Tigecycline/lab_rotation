@@ -1,6 +1,6 @@
 from .tree import *
-from .mutation_detection import *
-#from .LOH_detection import *
+from .mutation_filter import *
+import warnings
 
 
 
@@ -26,8 +26,7 @@ class TreeOptimizer:
         assert(likelihoods1.shape == likelihoods2.shape)
         self.n_cells, self.n_mut = likelihoods1.shape
         if self.n_cells < 3 or self.n_mut < 2:
-            print('[TreeOptimizer.fit] ERROR: cell tree / mutation tree too small, nothing to explore')
-            return
+            warnings.warn('[TreeOptimizer.fit] cell tree / mutation tree too small, nothing to explore', RuntimeWarning)
         
         self.likelihoods1, self.likelihoods2 = likelihoods1.copy(), likelihoods2.copy()
         self._decimals = sig_dig - int(np.log10(np.abs(np.sum(likelihoods1)))) # round tree likelihoods to this precision
@@ -314,6 +313,6 @@ def mean_likelihood(ct, likelihoods1, likelihoods2):
     optz = TreeOptimizer()
     optz.fit(likelihoods2, likelihoods1, reversible = True)
     optz.ct = ct
-    optz.ct.n_mut = optz.n_mut
+    #optz.ct.n_mut = optz.n_mut
     optz.update_ct()
     return optz.ct_mean_likelihood

@@ -9,15 +9,17 @@ class DataGenerator:
     mutation_types = ['RH', 'AH', 'HR', 'HA']
     
     
-    def __init__(self, n_cells=3, n_loci=10, f=0.95, omega=100, omega_h=50, cell_tree=None, gt1=None, gt2=None, coverage_sampler=None):
+    def __init__(self, n_cells=3, n_loci=10, f=0.95, omega=100, omega_h=50, mut_prop=1., genotype_freq=None, cell_tree=None, gt1=None, gt2=None, coverage_sampler=None):
         self.n_cells = n_cells
         self.n_loci = n_loci
         self.alpha = f * omega
         self.beta = omega - self.alpha
         self.omega_h = omega_h
+        self.mut_prop = mut_prop
+        self.genotype_freq = [1/3, 1/3, 1/3] if genotype_freq is None else genotype_freq # [R, H, A]
         self.tree = cell_tree
         
-        if gt1 is not None and gt2 is not None: 
+        if gt1 is not None and gt2 is not None:
             self.gt1 = gt1
             self.gt2 = gt2
         
@@ -39,13 +41,10 @@ class DataGenerator:
         return result
 
     
-    def random_mutations(self, mutated=None, mut_prop=1., genotype_freq=None):
-        if genotype_freq is None:
-            genotype_freq = [1/3, 1/3, 1/3] # R, H, A
-        self.gt1 = np.random.choice(['R', 'H', 'A'], size = self.n_loci, replace = True, p = genotype_freq)
-        self.gt2 = self.gt1.copy()
-        if mutated is None:
-            mutated = np.random.choice(self.n_loci, size = round(self.n_loci * mut_prop), replace = False)
+    def random_mutations(self):
+        self.gt1 = np.random.choice(['R', 'H', 'A'], size = self.n_loci, replace = True, p = self.genotype_freq)
+        self.gt2 = np.empty_like(self.gt1)
+        mutated = np.random.choice(self.n_loci, size = round(self.n_loci * self.mut_prop), replace = False)
         for j in mutated:
             if self.gt1[j] == 'H':
                 self.gt2[j] = np.random.choice(['R', 'A']) # mutation HA and HR with equal probability

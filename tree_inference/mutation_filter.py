@@ -210,7 +210,7 @@ class MutationFilter:
             selected = np.where(np.argmax(posteriors, axis=1) >= 3)[0]
         elif method == 'threshold': # choose loci at which mutated posterior > threshold 
             selected = np.where(np.sum(posteriors[:,3:], axis=1) > t)[0]
-        elif method == 'first_k': # choose loci with the k highest mutated posteriors
+        elif method == 'first_k': # choose the k loci with highest mutated posteriors
             mut_posteriors = np.sum(posteriors[:,3:], axis=1)
             order = np.argsort(mut_posteriors)
             selected = order[-n_exp:]

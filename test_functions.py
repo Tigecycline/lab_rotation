@@ -1,6 +1,6 @@
 from time import time
 import numpy as np
-from pathlib import Path
+import os
 import multiprocessing as mp
 
 from tree_inference.tree_optimizer import *
@@ -11,64 +11,48 @@ from tree_inference.utilities import *
 
 
 
-def compare_settings(data_generators, mut_filters, optimizers, n_tests=10, outdir=None):
-    pass # to be implemented
+def compare_settings(settings, outdir, setting_names=None, n_tests=10):
     '''
-    Compares different inference settings and saves the results to a txt file
+    Compare different inference settings and save the results to txt files
     
     [Arguments]
-        data_generators: list of DataGenerator objects to be tested
-        mut_filters: list of MutationFilter objects to be tested
-        optimizers: a list of TreeOptimizer objects to be tested
+        settings: list, combinations (of DataGenerator, MutationFilter and TreeOptimizer) to be tested
         n_tests: number of tests for each setting
         outdir: directory in which the test results should be saved
     '''
 
-    n_settings = len(optimizers)
+    results = []
+    # run tests for all settings
+    for i, setting in enumerate(settings):
+        print(f'Setting {i+1}:')
+        results.append(test_inference(*setting, n_tests=n_tests))
     
-    # arrays to store the test results
-    runtime = np.empty((n_tests, n_settings)) # runtime of the optimization step
-    dist = np.empty((n_tests, n_settings)) # distance between inferred and real trees
-    likelihoods = np.empty((n_tests, n_settings)) # mean (wrt size of leaf distance matrix) log-likelihood compared to real tree
-
-    for i in range(n_tests):
-        # generate new random tree
-        data_generator.random_tree()
-        data_generator.random_mutations()
-        true_mean = mean_likelihood(data_generator.tree, likelihoods1, likelihoods2)
-
-        ref_raw, alt_raw = data_generator.generate_reads()
-        ref, alt, gt1, gt2 = filter_mutations(ref_raw, alt_raw, method='threshold', t=0.5)
-        likelihoods1, likelihoods2 = likelihood_matrices(ref, alt, gt1, gt2)
-
-        for j, optz in enumerate(optimizers):
-            print(f'Running test {i+1}/{n_tests} with setting {j+1}/{n_settings}...', end='\r')
-            # run optimizer
-            optz.fit(likelihoods1, likelihoods2)
-            start = time()
-            optz.optimize(print_info = False)
-            
-            # save results
-            runtime[i,j] = time() - start
-            dist[i,j] = path_len_dist(optz.ct, data_generator.tree)
-            likelihoods[i,j] = optz.ct_mean_likelihood - true_mean
-
-        print(f'Test {i} finished.')
+    print('All settings tested.')
+    
+    # save results
+    if not os.path.exists(outdir):
+        os.mkdir(outdir)
+    if setting_names is not None:
+        np.savetxt(os.path.join(outdir, 'setting_names.txt'), setting_names, fmt='%s')
+    for statistic_name in results[0].keys():
+        statistic_matrix = np.stack([r[statistic_name] for r in results], axis=1)
+        np.savetxt(os.path.join(outdir, f'{statistic_name}.txt'), statistic_matrix)
 
 
-def test_inference(data_generator, mutattion_filter, optimizer, n_tests=10):
+def test_inference(data_generator, mutation_filter, optimizer, n_tests=10):
     # TODO: add more statistics to the test, such as TPR and FPR for the filtering step
     result = {name: np.empty(n_tests) for name in ['runtime', 'distance', 'llh_diff']}
 
     for i in range(n_tests):
+        print(f'Running test {i+1}...', end='\r')
         # generate random data
         data_generator.random_tree()
         data_generator.random_mutations()
 
         # filter mutations
         ref_raw, alt_raw = data_generator.generate_reads()
-        selected, gt1, gt2 = mutattion_filter.filter_mutations(ref_raw, alt_raw, method='threshold', t=0.5)
-        llh_mat_1, llh_mat_2 = mutattion_filter.get_llh_mat(ref_raw[:,selected], alt_raw[:,selected], gt1, gt2)
+        selected, gt1, gt2 = mutation_filter.filter_mutations(ref_raw, alt_raw, method='threshold', t=0.5)
+        llh_mat_1, llh_mat_2 = mutation_filter.get_llh_mat(ref_raw[:,selected], alt_raw[:,selected], gt1, gt2)
         true_mean = mean_likelihood(data_generator.tree, llh_mat_1, llh_mat_2)
 
         # optimize tree
@@ -77,11 +61,13 @@ def test_inference(data_generator, mutattion_filter, optimizer, n_tests=10):
         optimizer.optimize(print_info = False)
         runtime = time() - start
         
-        # save results
+        # save tree optimization statistics
         result['runtime'][i] = runtime
         result['distance'][i] = path_len_dist(optimizer.ct, data_generator.tree)
         result['llh_diff'][i] = optimizer.ct_mean_likelihood - true_mean
     
+    print('All tests finished.')
+
     return result
 
 

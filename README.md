@@ -104,7 +104,7 @@ The function `test_inference` allows repetitively testing the same combination o
 from test_functions import test_inference
 test_inference(dg, mf, optz)
 ```
-This function runs the entire pipeline (i.e. data generatioin, mutation filtering and tree optimization) for a defined number of times (10 times by default) and it returns some statistics that help evaluation the performance of the pipeline. The returns statistics are:
+This function runs the entire pipeline (i.e. data generatioin, mutation filtering and tree optimization) for a defined number of times (10 times by default) and it returns some statistics that help evaluate the performance of the pipeline. The returned statistics are:
 - distance to the real tree
 - runtime
 - adjusted likelihood compared to that of the real tree

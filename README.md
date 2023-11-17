@@ -106,8 +106,22 @@ test_inference(dg, mf, optz)
 ```
 This function runs the entire pipeline (i.e. data generatioin, mutation filtering and tree optimization) for a defined number of times (10 times by default) and it returns some statistics that help evaluate the performance of the pipeline. The returned statistics are:
 - distance to the real tree
-- runtime
-- adjusted likelihood compared to that of the real tree
+- optimization runtime
+- log-likelihood (with natural logarithm) of the inferred tree compared to that of the real tree
 
+To test multiple combinations, use the function `compare_settings` with a list settings (in the form of 3-tuples).
+```
+outdir = './test_result/'
+settings = [(generator, mf, optz1), (generator, mf, optz2), (generator, mf, optz3)]
+setting_names = ['cell tree', 'mutation tree', 'both']
+compare_settings(settings, outdir, setting_names, n_tests=10)
+```
+
+This function also stores the test results in a specified folder.
+Once the results are generated, the function `make_test_plots` can be used to generate a boxplot comparing results of all the settings.
+```
+from plot_functions import make_test_plots
+make_test_plots('./test_result/')
+```
 
 ## External Links

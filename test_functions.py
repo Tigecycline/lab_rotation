@@ -16,7 +16,7 @@ def compare_settings(settings, outdir, setting_names=None, n_tests=10):
     Compare different inference settings and save the results to txt files
     
     [Arguments]
-        settings: list, combinations (of DataGenerator, MutationFilter and TreeOptimizer) to be tested
+        settings: list of 3-tuples, each tuple consists of a DataGenerator, a MutationFilter and a TreeOptimizer object
         n_tests: number of tests for each setting
         outdir: directory in which the test results should be saved
     '''
@@ -34,7 +34,7 @@ def compare_settings(settings, outdir, setting_names=None, n_tests=10):
         os.mkdir(outdir)
     if setting_names is not None:
         np.savetxt(os.path.join(outdir, 'setting_names.txt'), setting_names, fmt='%s')
-    for statistic_name in results[0].keys():
+    for statistic_name in ['runtime', 'distance', 'llh_diff']:
         statistic_matrix = np.stack([r[statistic_name] for r in results], axis=1)
         np.savetxt(os.path.join(outdir, f'{statistic_name}.txt'), statistic_matrix)
 
@@ -53,7 +53,7 @@ def test_inference(data_generator, mutation_filter, optimizer, n_tests=10):
         ref_raw, alt_raw = data_generator.generate_reads()
         selected, gt1, gt2 = mutation_filter.filter_mutations(ref_raw, alt_raw, method='threshold', t=0.5)
         llh_mat_1, llh_mat_2 = mutation_filter.get_llh_mat(ref_raw[:,selected], alt_raw[:,selected], gt1, gt2)
-        true_mean = mean_likelihood(data_generator.tree, llh_mat_1, llh_mat_2)
+        true_llh = best_llh(data_generator.tree, llh_mat_1, llh_mat_2)
 
         # optimize tree
         optimizer.fit(llh_mat_1, llh_mat_2)
@@ -64,7 +64,7 @@ def test_inference(data_generator, mutation_filter, optimizer, n_tests=10):
         # save tree optimization statistics
         result['runtime'][i] = runtime
         result['distance'][i] = path_len_dist(optimizer.ct, data_generator.tree)
-        result['llh_diff'][i] = optimizer.ct_mean_likelihood - true_mean
+        result['llh_diff'][i] = optimizer.ct_joint - true_llh
     
     print('All tests finished.')
 

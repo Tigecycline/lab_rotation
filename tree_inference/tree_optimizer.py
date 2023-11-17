@@ -6,9 +6,15 @@ import warnings
 
 
 class TreeOptimizer:
-    def __init__(self, convergence_factor = 5, timeout_factor = 20): 
+    def __init__(self, convergence_factor = 5, timeout_factor = 20, spaces=None):
+        '''
+        spaces: spaces that will be searched and the order of the search
+                'c' = cell tree space, 'm' = mutation tree space
+                default is ['c','m'], i.e. start with cell tree and search both spaces
+        '''
         self.convergence_factor = convergence_factor
         self.timeout_factor = timeout_factor
+        self.spaces = ['c', 'm'] if spaces is None else spaces
     
     
     def fit(self, likelihoods1, likelihoods2, sig_dig = 10, reversible = False): 
@@ -240,15 +246,12 @@ class TreeOptimizer:
         return likelihood_history
     
     
-    def optimize(self, print_info = True, strategy = 'hill climb', spaces = None, n_space_max = None): 
+    def optimize(self, print_info = True, strategy = 'hill climb', n_space_max = None): 
         '''
         Optimizes the tree in all spaces.
         [Arguments]
             strategy: 'hill climb' is the only available option now 
                 it accepts moves that (strictly) increase the joint likelihood and rejects everything else 
-            spaces: spaces that will be searched and the order of the search
-                'c' = cell tree space, 'm' = mutation tree space
-                default is ['c','m'], i.e. start with cell tree and search both spaces
             n_space_max: maximal allowed number of space swaps.
         '''
         ct_convergence = self.n_cells * self.convergence_factor
@@ -256,9 +259,7 @@ class TreeOptimizer:
         ct_timeout = ct_convergence * self.timeout_factor
         mt_timeout = mt_convergence * self.timeout_factor
         
-        if spaces is None: 
-            spaces = ['c','m']
-        n_spaces = len(spaces)
+        n_spaces = len(self.spaces)
         converged = [False] * n_spaces # stop searching when all spaces have converged
         
         self.likelihood_history = [-np.inf]
@@ -274,7 +275,7 @@ class TreeOptimizer:
                 print('[TreeOptimizer.optimize] WARNING: maximal number (%i) of spaces reached' % n_space_max)
                 break
             # 0 = cell tree space, 1 = mutation tree space
-            current_space = spaces[space_idx]
+            current_space = self.spaces[space_idx]
             if current_space == 'c': 
                 new_history = self.ct_hill_climb(convergence = ct_convergence, timeout = ct_timeout, print_info = print_info)
                 self.mt.fit_structure(self.ct)
@@ -308,11 +309,11 @@ class TreeOptimizer:
 
 
 # TODO?: move to utilities
-def mean_likelihood(ct, likelihoods1, likelihoods2):
-    ''' Returns the mean_likelihood of a knwon cell tree '''
+def best_llh(ct, llh_1, llh_2):
+    ''' Returns the highest possible log-likelihood of a knwon cell tree '''
     optz = TreeOptimizer()
-    optz.fit(likelihoods2, likelihoods1, reversible = True)
+    optz.fit(llh_2, llh_1, reversible = True)
     optz.ct = ct
     #optz.ct.n_mut = optz.n_mut
     optz.update_ct()
-    return optz.ct_mean_likelihood
+    return optz.ct_joint

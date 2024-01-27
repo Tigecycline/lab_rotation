@@ -7,8 +7,9 @@ The inferred tree takes the form of a (strictly) binary cell lineage tree, in wh
 
 ## Requirements to Run the Project
 
-The project in written in Python. To be able to run it, one needs the following packages (in alphabetical order):
+This project is written entirely in Python. To be able to run it, one needs the following packages (in alphabetical order):
 - graphviz
+- matplotlib
 - numpy
 - pandas
 - scikit-learn

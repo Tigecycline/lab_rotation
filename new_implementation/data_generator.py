@@ -60,7 +60,7 @@ class DataGenerator:
     
     def random_tree(self, n_cells, n_loci): 
         self.tree = CellTree(n_cells, n_loci)
-        self.tree.rand_structure()
+        self.tree.rand_subtree()
         self.tree.rand_mut_loc()
     
 

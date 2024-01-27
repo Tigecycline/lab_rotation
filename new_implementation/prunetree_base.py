@@ -3,7 +3,7 @@ import numpy as np
 
 
 
-class Forest:
+class PruneTree:
     '''
     [Basic idea]
         - A tree structure that allows pruning subtrees (where it becomes a forest) and re-inserting them
@@ -22,12 +22,24 @@ class Forest:
         '''
         self._pvec = np.ones(n_vertices, dtype=int) * -1 # parent vector
         self._clist = [[] for i in range(n_vertices)] + [list(range(n_vertices))]
+        self._main_root = 0
     
 
-    ######## Forest properties ########
+    ######## Tree properties ########
     @property
     def roots(self):
         return self._clist[-1]
+    
+
+    @property
+    def main_root(self):
+        return self._main_root
+    
+
+    def reroot(self, new_main_root):
+        if not self.isroot(new_main_root):
+            self.prune(new_main_root)
+        self._main_root = new_main_root
 
 
     @property
@@ -40,20 +52,23 @@ class Forest:
         return self._pvec.copy()
     
 
-    @parent_vec.setter
-    def parent_vec(self, new_parent_vec):
+    def use_parent_vec(self, new_parent_vec, main_root=None):
         if len(new_parent_vec) != self.n_vtx:
             raise ValueError('Parent vector must have the same length as number of vertices.')
         
-        self._pvec = new_parent_vec.copy()
-        for vtx in range(self.n_vtx+1):
-            self._clist[vtx].clear()
         for vtx in range(self.n_vtx):
-            self._clist[self.parent(vtx)].append(vtx)
+            self.assign_parent(vtx, new_parent_vec[vtx])
+        
+        if main_root is None:
+            self._main_root = self.roots[0]
+        elif self._pvec[main_root] != -1:
+            raise ValueError('Provided main root is not a root.')
+        else:
+            self._main_root = main_root
     
 
-    def copy_structure(self, other):
-        self.parent_vec = other.parent_vec
+    def copy_from(self, other):
+        self.set_parent_vec(other.parent_vec, other.main_root)
     
 
     ######## Single-vertex properties ########
@@ -79,7 +94,14 @@ class Forest:
         return ancestor in self.ancestors(vtx)
     
 
-    ######## Methods to traverse the tree ########
+    ######## Methods to traverse vertices ########
+    def pruned_roots(self):
+        ''' Traverse the roots of all pruned subtrees '''
+        for rt in self.roots:
+            if rt != self._main_root:
+                yield rt
+
+
     def ancestors(self, vtx):
         ''' Traverse all ancestors of a vertex, NOT including itself '''
         if not self.isroot(vtx):
@@ -131,29 +153,28 @@ class Forest:
     #    self.assign_parent(vtx, new_parent)
 
 
-    def transfer_children(self, old_parent, new_parent):
-        ''' Transfer all children of old_parent to new_parent. If old_parent == new_parent, nothing happens. '''
-        transferred_children = self._clist[old_parent]
-        self._clist[old_parent] = []
-        self._clist[new_parent] += transferred_children
-        for child in transferred_children:
-            self._pvec[child] = new_parent
-    
-
-    #def guarded_transfer_children(self, old_parent, new_parent):
-    #    ''' transfer_children guarded against loop formation '''
-    #    if self.isdescendant(new_parent, old_parent):
-    #        raise ValueError(f'Cannot transfer the children of {old_parent} to {new_parent} because {new_parent} is already a descendant of {old_parent}.')
-    #    self.transfer_children(old_parent, new_parent)
-
-
     def prune(self, subroot):
         ''' Prune the subtree whose root is subroot. If subroot is already a root, nothing happens. '''
         self.assign_parent(subroot, -1)
     
 
-    #def cut_splice(self, vtx):
-    #    ''' Extract a specific vertex while keeping its children in original location '''
-    #    old_parent = self.parent(vtx)
-    #    self.prune(vtx)
-    #    self.transfer_children(vtx, old_parent)
+    def splice(self, subroot):
+        ''' Prune at subroot and its parent, then attach subroot back to its grandparent. '''
+        if self.isroot(subroot):
+            raise ValueError('Cannot splice a root')
+        
+        parent = self.parent(subroot)
+        grandparent = self.parent(parent)
+
+        self.prune(parent)
+        self.assign_parent(subroot, grandparent)
+        if grandparent == -1:
+            self._main_root = subroot
+
+
+    def insert(self, subroot, target):
+        ''' Insert the root of a pruned subtree to the edge above target. '''
+        self.assign_parent(subroot, self._pvec[target])
+        self.assign_parent(target, subroot)
+        if target == self._main_root:
+            self._main_root = subroot

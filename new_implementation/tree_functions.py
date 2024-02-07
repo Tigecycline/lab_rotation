@@ -37,7 +37,7 @@ def path_len_dist(ct1, ct2, unrooted=False):
 
 def best_llh(ct, llh_1, llh_2):
     test_ct = CellTree(*llh_1.shape)
-    test_ct.parent_vec = ct.parent_vec
+    test_ct.copy_structure(ct)
     test_ct.fit_llh(llh_1, llh_2)
     test_ct.update_all()
 

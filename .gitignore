@@ -3,6 +3,7 @@
 __pycache__/*
 tree_inference/__pycache__/*
 new_implementation/__pycache__/*
+dendro_comparison/comparison_data/*
 test.py
 test_result/*
 workbench.ipynb

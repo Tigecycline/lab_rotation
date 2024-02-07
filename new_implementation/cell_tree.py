@@ -2,7 +2,7 @@ import numpy as np
 import graphviz
 import warnings
 
-from .prunetree_base import PruneTree
+from .tree_base import PruneTree
 
 
 
@@ -89,14 +89,6 @@ class CellTree(PruneTree):
         # joint likelihood of each locus when all cells have genotype 1 or 2
         self.loc_joint_1 = llh_1.sum(axis=0)
         self.loc_joint_2 = llh_2.sum(axis=0)
-
-        # determine a rounding precision for joint likelihood calculation
-        #mean_abs = np.sum(np.abs(llh_1 + llh_2)) / 2 # mean abs value when attaching mutations randomly
-        #self.n_decimals = int(sig_digits - np.log10(mean_abs))
-        # Need to round because numpy.sum can give slightly different results when summing a matrix along different axis
-        # See the "Notes" section in this page: https://numpy.org/doc/stable/reference/generated/numpy.sum.html
-        # If not rounded, the joint likelihood might increase when converting between the two tree spaces
-        # Sometimes this traps the optimization in an infinite loop
 
         # assign mutations to optimal locations
         self.update_all()

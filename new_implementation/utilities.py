@@ -56,14 +56,6 @@ def randint_with_exclude(n, exclude):
     return rnd
 
 
-def coverage_sampler(ref = None, alt = None):
-    ''' Sample coverage from real data '''
-    if ref is None and alt is None:
-        ref, alt = read_data('./Data/glioblastoma_BT_S2/ref.csv', './Data/glioblastoma_BT_S2/alt.csv')
-    coverages = ref.flatten() + alt.flatten()
-    return lambda: np.random.choice(coverages)
-
-
 def log_n_sbtrees(n_leaves):
     ''' number of full binary trees with n labelled leaves, in log space '''
     assert(n_leaves >= 1)

@@ -2,7 +2,7 @@ import numpy as np
 import graphviz
 import warnings
 
-from .prunetree_base import PruneTree
+from .tree_base import PruneTree
 
 
 
@@ -15,6 +15,8 @@ class MutationTree(PruneTree):
         super().__init__(n_mut+1)
         self.n_mut = n_mut
         self.n_cells = n_cells
+
+        self.flipped = np.zeros(self.n_vtx, dtype=bool)
 
         self.reroot(self.wt)
         for vtx in range(self.n_mut):
@@ -60,8 +62,6 @@ class MutationTree(PruneTree):
         # joint likelihood of each locus when all cells have genotype 1 or 2
         self.loc_joint_1 = llh_1.sum(axis=0)
         self.loc_joint_2 = llh_2.sum(axis=0)
-        
-        self.flipped = np.zeros(self.n_vtx, dtype=bool)
 
         self.update_all()
     
@@ -95,7 +95,7 @@ class MutationTree(PruneTree):
                 llr_summand =  - self.llr[:,vtx] if self.flipped[vtx] else self.llr[:,vtx]
                 # It is not necessary to distinguish between roots and non-roots,
                 # as self.cumul_llr[:,self.parent(vtx)] is 0 for all roots
-                # This distinguishment serves only to maintain logical consistency
+                # But distinguishment maintains logical consistency
                 if self.isroot(vtx):
                     self.cumul_llr[:,vtx] = llr_summand
                 else:
@@ -114,6 +114,7 @@ class MutationTree(PruneTree):
     
 
     def greedy_attach(self):
+        # TODO: is there an efficient method that optimizes self.flipped simultaneously?
         for subroot in self.pruned_roots():
             main_tree_max = self.cumul_llr[:,list(self.dfs(self.main_root))].max(axis=1)
             subtree_max = self.cumul_llr[:,list(self.dfs(subroot))].max(axis=1)

@@ -1,4 +1,5 @@
 .ipynb_checkpoints/*
+new_implementation/ipynb_checkpoints/*
 .vscode/*
 __pycache__/*
 tree_inference/__pycache__/*

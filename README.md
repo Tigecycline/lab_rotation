@@ -44,29 +44,16 @@ The workflow contains the following parts:
 
 We compared the performance to infer a true tree from read counts between SCITE_RNA and [Dendro](https://doi.org/10.1186/s13059-019-1922-x). 
 
-![PDF](https://github.com/Tigecycline/lab_rotation/blob/new_ideas/dendro_comparison/figures/distances_hist.pdf)
+The perform this analysis, run the following script:
+
+`comparison.py` 
+
+and then 
+
+`comparison_figures.py` to generate the figures
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+One consideration is that it takes hours to run `comparison.py` on a home pc
 
 
 

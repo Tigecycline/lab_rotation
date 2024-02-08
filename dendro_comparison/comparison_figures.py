@@ -4,11 +4,11 @@ import os, sys
 from tqdm import tqdm
 
 sys.path.append('../')
-from new_implementation.tree_functions import path_len_dist
-from new_implementation.mutation_filter import MutationFilter
-from new_implementation.cell_tree import CellTree
-from new_implementation.mutation_tree import MutationTree
-from new_implementation.swap_optimizer import SwapOptimizer
+from scite_rna.tree_functions import path_len_dist
+from scite_rna.mutation_filter import MutationFilter
+from scite_rna.cell_tree import CellTree
+from scite_rna.mutation_tree import MutationTree
+from scite_rna.swap_optimizer import SwapOptimizer
 
 
 

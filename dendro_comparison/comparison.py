@@ -2,10 +2,10 @@ import sys, os
 from tqdm import tqdm
 sys.path.append('../')
 
-from new_implementation.utilities import *
-from new_implementation.data_generator import DataGenerator
-from new_implementation.mutation_filter import MutationFilter
-from new_implementation.swap_optimizer import SwapOptimizer
+from scite_rna.utilities import *
+from scite_rna.data_generator import DataGenerator
+from scite_rna.mutation_filter import MutationFilter
+from scite_rna.swap_optimizer import SwapOptimizer
 
 
 

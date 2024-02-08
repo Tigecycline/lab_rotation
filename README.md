@@ -16,6 +16,58 @@ This project is written entirely in Python. To be able to run it, one needs the 
 - scipy
 
 
+
+## Running the demo notebook
+
+In this notebook, we perform a simulation study to test the performance of SCITE_RNA to infer a true tree from read counts.
+Specifically, we generate a true tree, convert it to read counts and then analyze our ability to infer the true tree from the read counts.
+
+The workflow contains the following parts:
+
+1. Simulate a random cell lineage tree, representing the true tree.
+
+2. Generate random read counts from the true tree. 
+
+3. Using the reads, call mutations and subsequently filter these by selecting loci considered to be mutated.
+
+4. In these loci, calculate the likelihood for each cell to be mutated or not mutated
+
+5. Perform tree inference. The output is the inferred tree.
+
+6. Calculate the distance between the true tree and the inferred tree
+
+
+
+
+
+
+
+
+
+
+## Compare SCITE_RNA with Dendro
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 ## How to Use the Data Generator
 
 There is a data generator class that uses the same model to generate random data.
